@@ -1,0 +1,221 @@
+-- NewComptroller, but with markets listed so that we can make them strk markets in constructor
+Macro FlywheelComptroller price=1.0 borrowRate=0.000005 strikeInitAmount=5000000e18
+    Unitroller Deploy
+    PriceOracle Deploy Fixed price
+    PriceOracleProxy Deploy Admin (PriceOracle Address) (Address Zero) (Address Zero) (Address Zero) (Address Zero) (Address Zero)
+    ----g2
+    ComptrollerImpl Deploy ScenarioG2 ComptrollerScenG2
+    Unitroller SetPendingImpl ComptrollerScenG2
+    ComptrollerImpl ComptrollerScenG2 BecomeG2
+    --list some tokens
+    Comptroller SetPriceOracle (PriceOracleProxy Address)
+    Comptroller SetMaxAssets 20
+    Comptroller SetCloseFactor 0.5
+    Comptroller LiquidationIncentive 1.1
+    NewSToken ZRX sZRX
+    NewSToken BAT sBAT
+    Support sZRX collateralFactor:0.5
+    Support sBAT collateralFactor:0.5
+    -- final
+    ComptrollerImpl Deploy ScenarioG3 ComptrollerScen
+    Unitroller SetPendingImpl ComptrollerScen
+    ComptrollerImpl ComptrollerScen BecomeG3 1e18 [sZRX sBAT]
+    Erc20 Deploy Standard STRK "STRK Token" 18
+    Give (Address Comptroller) strikeInitAmount STRK
+    Comptroller Send "setSTRKAddress(address)" (Address STRK)
+
+Macro InitSpeeds
+    Prep Geoff 100e18 ZRX sZRX
+    Mint Geoff 50e18 sZRX--tokenbalance = 50e18 / 2e9 = 2.5e10
+    Prep Coburn Some BAT sBAT
+    Mint Coburn 6e18 sBAT--tokenbalance = 6e18 / 2e9 = 3e9
+    EnterMarkets Coburn sBAT
+    Borrow Coburn 1e18 sZRX
+    Comptroller RefreshStrikeSpeeds
+
+Test "Accrue STRK during a mint"
+    FlywheelComptroller
+    InitSpeeds
+    FastForward 300000 Blocks
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Mint Geoff 1e18 sZRX
+    -- new index = initVal + deltaBlocks * supplySpeed * 1e36 / totalSupply
+    -- new index = 1e36 + 300000 * 1e18 * 1e36 / 2.5e10 = 1.2000000000001e49
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Comptroller StrikeSupplyState sZRX "index") 1.2000000000001e49
+    Assert Equal (Comptroller StrikeSupplyState sZRX "block") 300000
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 300000e18
+    Assert Equal (Comptroller StrikeSupplierIndex sZRX Geoff) 1.2000000000001e49
+
+Test "Accrue STRK during a borrow"
+    FlywheelComptroller
+    InitSpeeds
+    Comptroller FastForward 300000 Blocks
+    Assert Equal (Comptroller StrikeAccrued Coburn) 0
+    Borrow Coburn 0.1e18 sZRX
+    -- new index = initVal + deltaBlocks * borrowSpeed * 1e36 / totalBorrows
+    -- new index = 1e36 + 300000 * 1e18 * 1e36 / 1e18 =  3.00001e41
+    Assert Equal (Comptroller StrikeAccrued Coburn) 0
+    Assert Equal (Comptroller StrikeBorrowState sZRX "index") 3.00001e41
+    Assert Equal (Comptroller StrikeBorrowState sZRX "block") 300000
+    Assert Equal (Erc20 STRK TokenBalance Coburn) 300000e18
+    Assert Equal (Comptroller StrikeBorrowerIndex sZRX Coburn) 3.00001e41
+
+Test "Accrue STRK during a redeem"
+    FlywheelComptroller
+    InitSpeeds
+    FastForward 300000 Blocks
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Redeem Geoff 1e9 sZRX
+    -- new index = initVal + deltaBlocks * supplySpeed * 1e36 / totalSupply
+    -- new index = 1e36 + 300000 * 1e18 * 1e36 / 2.5e10 = 1.2000000000001e49
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Comptroller StrikeSupplyState sZRX "index") 1.2000000000001e49
+    Assert Equal (Comptroller StrikeSupplyState sZRX "block") 300000
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 300000e18
+    Assert Equal (Comptroller StrikeSupplierIndex sZRX Geoff) 1.2000000000001e49
+
+Test "Accrue STRK during a repayBorrow"
+    FlywheelComptroller
+    InitSpeeds
+    FastForward 300000 Blocks
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Prep Coburn 0.5e18 ZRX sZRX
+    RepayBorrow Coburn 0.5e18 sZRX
+    -- new index = initVal + deltaBlocks * borrowSpeed * 1e36 / totalBorrows
+    -- new index = 1e36 + 300000 * 1e18 * 1e36 / 1e18 =  3.00001e41
+    Assert Equal (Comptroller StrikeAccrued Coburn) 0
+    Assert Equal (Comptroller StrikeBorrowState sZRX "index") 3.00001e41
+    Assert Equal (Comptroller StrikeBorrowState sZRX "block") 300000
+    Assert Equal (Erc20 STRK TokenBalance Coburn) 300000e18
+    Assert Equal (Comptroller StrikeBorrowerIndex sZRX Coburn) 3.00001e41
+
+Test "Accrue STRK during a repayBorrowBehalf of 0"
+    FlywheelComptroller
+    InitSpeeds
+    FastForward 300000 Blocks
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    -- confirm we can init all flywheel accounts for free
+    RepayBorrowBehalf Jared Coburn 0 sZRX
+    -- new index = initVal + deltaBlocks * borrowSpeed * 1e36 / totalBorrows
+    -- new index = 1e36 + 300000 * 1e18 * 1e36 / 1e18 = 3.00001e41
+    Assert Equal (Comptroller StrikeAccrued Coburn) 0
+    Assert Equal (Comptroller StrikeBorrowState sZRX "index") 3.00001e41
+    Assert Equal (Comptroller StrikeBorrowState sZRX "block") 300000
+    Assert Equal (Erc20 STRK TokenBalance Coburn) 300000e18
+    Assert Equal (Comptroller StrikeBorrowerIndex sZRX Coburn) 3.00001e41
+
+Test "Accrue STRK during a liquidation"
+    FlywheelComptroller
+    InitSpeeds
+    Assert Equal (Comptroller StrikeSpeed sZRX) 1e18
+    Assert Equal (Comptroller StrikeSpeed sBAT) 0
+    --coburn zrx borrow, bat supply. geoff zrx supply
+    FastForward 600000 Blocks--1e18 borrow * (1 + 600000 * 0.000005) = 3.5e18 borrow > 6e18 collateral * 0.5 CF
+    Prep Geoff Some ZRX sZRX
+    From Geoff (SToken sZRX Liquidate Coburn sBAT 0.5e18)
+    -- zrx borrow index is updated and strk distributed
+    -- * new index = initVal + deltaBlocks * borrowSpeed * 1e36 / totalBorrows
+    -- * new index = 1e36 + 600000 * 1e18 * 1e36 / 1e18 = 6.00001E41
+    Assert Equal (Comptroller StrikeBorrowState sZRX "index") 6.00001e41
+    Assert Equal (Comptroller StrikeBorrowState sZRX "block") 600000
+    -- zrx supply index isnt updated and strk isnt distributed for zrx supply
+    Assert Equal (Comptroller StrikeSupplyState sZRX "index") 1e36
+    Assert Equal (Comptroller StrikeSupplyState sZRX "block") 0
+    Assert Equal (Comptroller StrikeSupplierIndex sZRX Geoff) 1e36--no change, minted in init
+    -- bat supply/borrow index is not updated, since there is no strk speed
+    Assert Equal (Comptroller StrikeSupplyState sBAT "index") 1e36
+    Assert Equal (Comptroller StrikeSupplyState sBAT "block") 600000
+    -- neither is borrow state. block is 0 because update fn is never even called
+    Assert Equal (Comptroller StrikeBorrowState sBAT "index") 1e36
+    Assert Equal (Comptroller StrikeBorrowState sBAT "block") 0
+    --
+    Assert Equal (Comptroller StrikeSupplierIndex sBAT Coburn) 1e36
+    Assert Equal (Comptroller StrikeBorrowerIndex sZRX Coburn) 6.00001e41
+    Assert Equal (Erc20 STRK TokenBalance Coburn) 600000e18
+    Assert Equal (Comptroller StrikeAccrued Coburn) 0
+    --
+    Assert Equal (Comptroller StrikeSupplierIndex sBAT Geoff) 1e36
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 0
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+
+Test "Accrue STRK during a transfer"
+    FlywheelComptroller
+    InitSpeeds
+    FastForward 300000 Blocks
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 0
+    Assert Equal (Comptroller StrikeSupplierIndex sZRX Geoff) 1e36
+    Transfer Geoff Jared 2.5e10 sZRX
+    -- new index = initVal + deltaBlocks * supplySpeed * 1e36 / totalSupply
+    -- new index = 1e36 + 300000 * 1e18 * 1e36 / 2.5e10 = 1.2000000000001e49
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 300000e18
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Comptroller StrikeSupplyState sZRX "index") 1.2000000000001e49
+    Assert Equal (Comptroller StrikeSupplyState sZRX "block") 300000
+    Assert Equal (Comptroller StrikeSupplierIndex sZRX Geoff) 1.2000000000001e49
+    --
+    Assert Equal (Comptroller StrikeAccrued Jared) 0
+    Assert Equal (Comptroller StrikeSupplyState sZRX "index") 1.2000000000001e49
+    Assert Equal (Comptroller StrikeSupplyState sZRX "block") 300000
+    Assert Equal (Comptroller StrikeSupplierIndex sZRX Jared) 1.2000000000001e49
+
+Test "Accrues correctly when market is added, deactivated, and activated again"
+    FlywheelComptroller
+    InitSpeeds
+    NewSToken DAI sDAI
+    --
+    Support sDAI collateralFactor:0.5
+    Comptroller AddStrikeMarkets sDAI
+    Assert Equal (Comptroller GetStrikeMarkets) [(Address sZRX) (Address sBAT) (Address sDAI)]
+    Prep Jared Some DAI sDAI
+    Mint Jared 6e18 sDAI
+    EnterMarkets Geoff sZRX
+    Borrow Geoff 0.5e18 sDAI
+    Borrow Coburn 0.5e18 sDAI
+    Comptroller RefreshStrikeSpeeds
+    Assert Equal (Comptroller StrikeSpeed sZRX) 0.5e18
+    Assert Equal (Comptroller StrikeSpeed sDAI) 0.5e18
+    --
+    FastForward 100 Blocks
+    Comptroller DropStrikeMarket sDAI
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 75e18--half of sdai, all of zrx(.25e18 + .5e18) * 100
+    Assert Equal (Comptroller GetStrikeMarkets) [(Address sZRX) (Address sBAT)]
+    Assert Equal (Comptroller StrikeSpeed sZRX) 1e18
+    Assert Equal (Comptroller StrikeSpeed sDAI) 0
+    --
+    FastForward 100 Blocks
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 175e18-- += 1e18 * 100
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    --
+    Comptroller AddStrikeMarkets sDAI
+    FastForward 100 Blocks
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 250e18--half of sdai, all of zrx. += (.25 + .5) * 100
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+
+Test "TransferStrike handles running out of STRK in Comptroller correctly"
+    FlywheelComptroller price:1.0 borrowRate:0.000005 strikeInitAmount:1e18
+    InitSpeeds
+    FastForward 2 Blocks
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Comptroller StrikeAccrued Geoff) 2e18
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 0
+    Give (Address Comptroller) 1e18 STRK
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 2e18
+
+Test "Changing STRK rate continues to distribute at the correct speed"
+    FlywheelComptroller
+    InitSpeeds
+    --
+    Assert Equal (Comptroller StrikeSpeed sZRX) 1e18
+    FastForward 10 Blocks
+    Comptroller SetStrikeRate 2e18
+    Assert Equal (Comptroller StrikeSpeed sZRX) 2e18
+    FastForward 10 Blocks
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 30e18

@@ -1,0 +1,12 @@
+
+Test "ReEntry Mint @no-cov"
+    NewComptroller
+    Erc20 Deploy ReEntrant PHREAK PHREAK  "transferFrom" "mint(uint256)" "0"
+    InterestRateModel Deploy Fixed Std 0.000001
+    SToken Deploy Scenario sPHREAK sPHREAK (Erc20 PHREAK Address) (Comptroller Address) (InterestRateModel Std Address) 1e9 8 Admin
+    Comptroller SupportMarket sPHREAK
+    Prep Geoff Some PHREAK sPHREAK
+    AllowFailures
+    Mint Geoff 50e18 sPHREAK
+    Assert Revert "revert re-entered"
+    Assert Equal (Erc20 sPHREAK TokenBalance Geoff) Zero

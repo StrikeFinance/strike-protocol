@@ -1,0 +1,93 @@
+-- Mint Tests
+
+Test "Mint 1 sWBTC"
+    NewComptroller
+    ListedSToken WBTC sWBTC initialExchangeRate:0.2 tokenType:WBTC
+    Prep Geoff Some WBTC sWBTC
+    Mint Geoff 10e8 sWBTC
+    Assert Equal (Erc20 sWBTC TokenBalance Geoff) (Exactly 50e8)
+    Assert Equal (SToken sWBTC UnderlyingBalance Geoff) (Exactly 10e8)
+
+Test "Mint WBTC with insufficient allowance"
+    NewComptroller
+    ListedSToken WBTC sWBTC initialExchangeRate:0.2 tokenType:WBTC
+    Prep Geoff 5e8 WBTC sWBTC allowanceAmount:4.9e8
+    AllowFailures
+    Mint Geoff 5e8 sWBTC
+    --wbtc does not revert with reason in transfer from
+    Assert Revert "revert"
+    Assert Equal (Erc20 sWBTC TokenBalance Geoff) (Exactly 0e8)
+
+Test "Mint WBTC with insufficient balance"
+    NewComptroller
+    ListedSToken WBTC sWBTC initialExchangeRate:0.2 tokenType:WBTC
+    Prep Geoff 4.9e8 WBTC sWBTC allowanceAmount:5e8
+    AllowFailures
+    Mint Geoff 5e8 sWBTC
+    --wbtc does not revert with reason in transfer from
+    Assert Revert "revert"
+    Assert Equal (Erc20 sWBTC TokenBalance Geoff) (Exactly 0e8)
+
+Test "Mint two WBTC after minting two WBTC, and then I mint two more"
+    NewComptroller
+    ListedSToken WBTC sWBTC initialExchangeRate:0.2 tokenType:WBTC
+    Prep Geoff Some WBTC sWBTC
+    Mint Geoff 2e8 sWBTC
+    Assert Equal (Erc20 sWBTC TokenBalance Geoff) (Exactly 10e8)
+    Assert Equal (Erc20 sWBTC TotalSupply) (Exactly 10e8)
+    Mint Geoff 2e8 sWBTC
+    Assert Equal (Erc20 sWBTC TokenBalance Geoff) (Exactly 20e8)
+    Assert Equal (Erc20 sWBTC TotalSupply) (Exactly 20e8)
+    Mint Geoff 2e8 sWBTC
+    Assert Equal (Erc20 sWBTC TokenBalance Geoff) (Exactly 30e8)
+    Assert Equal (Erc20 sWBTC TotalSupply) (Exactly 30e8)
+
+Test "Two users Mint WBTC"
+    NewComptroller
+    ListedSToken WBTC sWBTC initialExchangeRate:0.2 tokenType:WBTC
+    Prep Geoff Some WBTC sWBTC
+    Prep Torrey Some WBTC sWBTC
+    Mint Geoff 2e8 sWBTC
+    Assert Equal (Erc20 sWBTC TokenBalance Geoff) (Exactly 10e8)
+    Assert Equal (Erc20 sWBTC TotalSupply) (Exactly 10e8)
+    Mint Torrey 2e8 sWBTC
+    Assert Equal (Erc20 sWBTC TokenBalance Geoff) (Exactly 10e8)
+    Assert Equal (Erc20 sWBTC TokenBalance Torrey) (Exactly 10e8)
+    Assert Equal (Erc20 sWBTC TotalSupply) (Exactly 20e8)
+
+Test "Mint WBTC accrues no interest without borrows"
+    NewComptroller
+    ListedSToken WBTC sWBTC initialExchangeRate:0.2 tokenType:WBTC
+    Prep Geoff Some WBTC sWBTC
+    Prep Torrey Some WBTC sWBTC
+    Mint Geoff 2e8 sWBTC
+    Assert Equal (Erc20 sWBTC TokenBalance Geoff) (Exactly 10e8)
+    Assert Equal (Erc20 sWBTC TotalSupply) (Exactly 10e8)
+    FastForward 1000 Blocks
+    Assert Equal (Erc20 sWBTC TokenBalance Geoff) (Exactly 10e8)
+    Assert Equal (Erc20 sWBTC TotalSupply) (Exactly 10e8)
+
+Test "Mint WBTC transfer in fails due to paused"
+    NewComptroller
+    ListedSToken WBTC sWBTC initialExchangeRate:0.2 tokenType:WBTC
+    Prep Geoff Some WBTC sWBTC
+    Prep Torrey Some WBTC sWBTC
+    Invariant Static (Erc20 sWBTC TokenBalance Geoff)
+    Invariant Static (Erc20 sWBTC TotalSupply)
+    Invariant Static (Erc20 WBTC TotalSupply)
+    Erc20 WBTC Pause
+    AllowFailures
+    Mint Geoff 2e8 sWBTC
+    Assert Revert
+
+Test "Denied by comptroller because WBTC unlisted"
+    NewComptroller
+    NewSToken WBTC sWBTC tokenType:WBTC
+    Prep Geoff Some WBTC sWBTC
+    Prep Torrey Some WBTC sWBTC
+    Invariant Static (Erc20 sWBTC TokenBalance Geoff)
+    Invariant Static (Erc20 sWBTC TotalSupply)
+    Invariant Static (Erc20 WBTC TotalSupply)
+    AllowFailures
+    Mint Geoff 2e8 sWBTC
+    Assert Failure COMPTROLLER_REJECTION MINT_COMPTROLLER_REJECTION MARKET_NOT_LISTED

@@ -1,0 +1,59 @@
+#!/usr/bin/env yarn run repl -s
+-- Deploys basic ComptrollerG3
+
+Unitroller Deploy
+PriceOracle Deploy Fixed 1.0
+PriceOracleProxy Deploy Admin (PriceOracle Address) (Address Zero) (Address Zero) (Address Zero) (Address Zero) (Address Zero)
+----g2
+ComptrollerImpl Deploy ScenarioG2 ComptrollerScenG2
+Unitroller SetPendingImpl ComptrollerScenG2
+ComptrollerImpl ComptrollerScenG2 BecomeG2
+--list some tokens
+Comptroller SetPriceOracle (PriceOracleProxy Address)
+Comptroller SetMaxAssets 20
+Comptroller SetCloseFactor 0.5
+Comptroller LiquidationIncentive 1.1
+NewSToken ZRX sZRX
+NewSToken BAT sBAT
+Support sZRX collateralFactor:0.5
+Support sBAT collateralFactor:0.5
+-- final
+ComptrollerImpl Deploy Scenario ComptrollerScen
+Unitroller SetPendingImpl ComptrollerScen
+
+Prep Geoff 100e18 ZRX sZRX
+Mint Geoff 50e18 sZRX--tokenbalance = 50e18 / 2e9 = 2.5e10
+
+Prep Fourth Some BAT sBAT
+Mint Fourth 6e18 sBAT
+EnterMarkets Fourth sBAT
+Borrow Fourth 1e18 sZRX
+
+Prep Fifth Some BAT sBAT
+Mint Fifth 6e18 sBAT
+EnterMarkets Fifth sBAT
+Borrow Fifth 1e18 sZRX
+
+Prep Sixth Some BAT sBAT
+Mint Sixth 6e18 sBAT
+EnterMarkets Sixth sBAT
+Borrow Sixth 1e18 sZRX
+
+Prep Seventh Some BAT sBAT
+Mint Seventh 6e18 sBAT
+EnterMarkets Seventh sBAT
+Borrow Seventh 1e18 sZRX
+
+ComptrollerImpl ComptrollerScen Become 1e18 [sZRX sBAT]
+Erc20 Deploy Standard STRK "STRK Token" 18
+Give (Address Comptroller) 5000000e18 STRK
+Comptroller Send "setSTRKAddress(address)" (Address STRK)
+
+Comptroller RefreshStrikeSpeeds
+
+FastForward 300000 Blocks
+Read (Comptroller Address)
+Read (Address Fourth)
+Read (Address Fifth)
+Read (Address Sixth)
+Read (Address Seventh)

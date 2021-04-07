@@ -1,0 +1,26 @@
+-- Sets for `_setComptroller` Admin Function
+
+Test "Set Comptroller"
+    NewComptroller
+    NewSToken ZRX sZRX
+    Assert Equal (SToken sZRX Comptroller) (Unitroller Address)
+    ComptrollerImpl Deploy Scenario NewComptroller
+    From Root (SToken sZRX SetComptroller (ComptrollerImpl NewComptroller Address))
+    -- TODO: Fix log assertion
+    -- Assert Log "NewComptroller" ("oldComptroller" (Unitroller Address)) ("newComptroller" (ComptrollerImpl NewComptroller Address))
+    Assert Equal (SToken sZRX Comptroller) (ComptrollerImpl NewComptroller Address)
+
+Test "Fail when is not a comptroller"
+    NewComptroller
+    NewSToken ZRX sZRX
+    Invariant Remains (SToken sZRX Comptroller) (Unitroller Address)
+    AllowFailures
+    From Root (SToken sZRX SetComptroller (PriceOracle Address))
+    Assert Revert
+
+Test "Fail to set comptroller as not admin"
+    NewComptroller
+    NewSToken ZRX sZRX
+    AllowFailures
+    From Geoff (SToken sZRX SetComptroller (PriceOracle Address))
+    Assert Failure UNAUTHORIZED SET_COMPTROLLER_OWNER_CHECK

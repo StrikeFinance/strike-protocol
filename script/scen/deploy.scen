@@ -1,0 +1,31 @@
+#!/usr/bin/env yarn run repl -s
+-- Deploys new Comptroller with some ERC20 and some sTokens
+
+-- First deploy a price oracle
+Gate (PriceOracle Address) (PriceOracle Deploy Simple)
+
+-- Next a comptroller
+Gate (Comptroller Address) (Comptroller Deploy YesNo)
+
+-- Next an interest rate model
+Gate (InterestRateModel InterestRateModel Address) (InterestRateModel Deploy Fixed InterestRateModel 0.0004)
+
+-- Now deploy some ERC-20 faucet tokens
+Gate (Erc20 ZRX Address) (Erc20 Deploy Standard ZRX "0x")
+Gate (Erc20 BAT Address) (Erc20 Deploy NonStandard BAT "Basic Attention Token")
+Gate (Erc20 DAI Address) (Erc20 Deploy Standard DAI "Dai")
+Gate (Erc20 REP Address) (Erc20 Deploy Standard REP "Augur")
+Gate (Erc20 USDC Address) (Erc20 Deploy Standard USDC "USD Coin" 6)
+
+-- Now deploy our sTokens
+Gate (SToken sZRX Address) (SToken Deploy SErc20 sZRX "Test 0x 📈" (Erc20 ZRX Address) (Comptroller Address) (InterestRateModel InterestRateModel Address) 0.2e9 8)
+Gate (SToken sBAT Address) (SToken Deploy SErc20 sBAT "Test Basic Attention Token 📈" (Erc20 BAT Address) (Comptroller Address) (InterestRateModel InterestRateModel Address) 0.2e9 8)
+Gate (SToken sDAI Address) (SToken Deploy SErc20 sDAI "Test Dai 📈" (Erc20 DAI Address) (Comptroller Address) (InterestRateModel InterestRateModel Address) 0.2e9 8)
+Gate (SToken sREP Address) (SToken Deploy SErc20 sREP "Test Augur 📈" (Erc20 REP Address) (Comptroller Address) (InterestRateModel InterestRateModel Address) 0.2e9 8)
+Gate (SToken sETH Address) (SToken Deploy SEther sETH "Test Ether 📈" (Comptroller Address) (InterestRateModel InterestRateModel Address) 0.2e9 8)
+Gate (SToken sUSDC Address) (SToken Deploy SErc20 sUSDC "Test USD Coin 📈" (Erc20 USDC Address) (Comptroller Address) (InterestRateModel InterestRateModel Address) 2e-4 8)
+
+-- Deploy Maximillion
+Gate (Maximillion Address) (Maximillion Deploy sETH)
+
+Print "Deployed Comptroller and sTokens: sETH, sBAT, sDAI, sREP, sUSDC and sZRX"

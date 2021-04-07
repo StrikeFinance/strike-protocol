@@ -1,0 +1,151 @@
+-- Enter and Exit Markets Tests
+
+Test "Enter Markets Idempotent"
+	NewComptroller
+	Assert Equal (Comptroller MembershipLength Geoff) Zero
+	Assert Equal (Comptroller AssetsIn Geoff) []
+	ListedSToken ZRX sZRX
+	EnterMarkets Geoff sZRX
+	Assert Log MarketEntered (sToken (Address sZRX)) (account (Address Geoff))
+	Assert Equal (Comptroller MembershipLength Geoff) (Exactly 1)
+	Assert True (Comptroller CheckMembership Geoff sZRX)
+	ListedSToken OMG cOMG
+	EnterMarkets Geoff sZRX cOMG
+	Assert Equal (Comptroller MembershipLength Geoff) (Exactly 2)
+	Assert True (Comptroller CheckMembership Geoff sZRX)
+	Assert True (Comptroller CheckMembership Geoff cOMG)
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address cOMG)]
+
+Test "Entered Market Must Be Supported"
+	NewComptroller
+	Assert Equal (Comptroller MembershipLength Geoff) Zero
+	ListedSToken ZRX sZRX
+	EnterMarkets Geoff sZRX
+	Assert Equal (Comptroller MembershipLength Geoff) (Exactly 1)
+	NewSToken OMG cOMG
+	EnterMarkets Geoff sZRX cOMG
+	Assert Equal (Comptroller MembershipLength Geoff) (Exactly 1)
+	Assert True (Comptroller CheckMembership Geoff sZRX)
+	Assert False (Comptroller CheckMembership Geoff cOMG)
+	Support cOMG
+	EnterMarkets Geoff sZRX cOMG
+	Assert Equal (Comptroller MembershipLength Geoff) (Exactly 2)
+	Assert True (Comptroller CheckMembership Geoff sZRX)
+	Assert True (Comptroller CheckMembership Geoff cOMG)
+
+Test "Cannot enter Markets beyond max assets"
+	NewComptroller
+	Comptroller SetMaxAssets 1
+	Assert Equal (Comptroller MembershipLength Geoff) Zero
+	ListedSToken ZRX sZRX
+	ListedSToken OMG cOMG
+	EnterMarkets Geoff sZRX cOMG
+	Assert Equal (Comptroller MembershipLength Geoff) (Exactly 1)
+	Assert True (Comptroller CheckMembership Geoff sZRX)
+	Assert False (Comptroller CheckMembership Geoff cOMG)
+
+Test "Exit single market"
+	NewComptroller
+	ListedSToken ZRX sZRX
+	EnterMarkets Geoff sZRX
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX)]
+	ExitMarket Geoff sZRX
+	Assert Equal (Comptroller AssetsIn Geoff) []
+
+Test "Exit non-entered market"
+	NewComptroller
+	ListedSToken ZRX sZRX
+	ExitMarket Geoff sZRX
+	Assert Equal (Comptroller AssetsIn Geoff) []
+
+Test "Exit one of two market from the front"
+	NewComptroller
+	ListedSToken ZRX sZRX
+	ListedSToken OMG cOMG
+	EnterMarkets Geoff sZRX cOMG
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address cOMG)]
+	ExitMarket Geoff sZRX
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address cOMG)]
+
+Test "Exit one of two market from the back"
+	NewComptroller
+	ListedSToken ZRX sZRX
+	ListedSToken OMG cOMG
+	EnterMarkets Geoff sZRX cOMG
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address cOMG)]
+	ExitMarket Geoff cOMG
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX)]
+
+Test "Exit multiple markets"
+	NewComptroller
+	ListedSToken ZRX sZRX
+	ListedSToken OMG cOMG
+	ListedSToken BAT sBAT
+	ListedSToken REP sREP
+	ListedSToken DAI sDAI
+	EnterMarkets Geoff sZRX cOMG sBAT sREP sDAI
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address cOMG) (Address sBAT) (Address sREP) (Address sDAI)]
+	ExitMarket Geoff sZRX
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sDAI) (Address cOMG) (Address sBAT) (Address sREP)]
+	ExitMarket Geoff sREP
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sDAI) (Address cOMG) (Address sBAT)]
+	ExitMarket Geoff cOMG
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sDAI) (Address sBAT)]
+	ExitMarket Geoff sDAI
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sBAT)]
+	ExitMarket Geoff sBAT
+	Assert Equal (Comptroller AssetsIn Geoff) []
+
+Test "Realistic Market Scenario"
+	PricedComptroller
+	ListedSToken ZRX sZRX
+	SetPriceCF sZRX 0.002 0.4
+	ListedEtherToken sETH
+	Comptroller SetCollateralFactor sEth 0.8
+	ListedSToken BAT sBAT
+	SetPriceCF sBAT 0.0015 0.3
+	-- Mint some sZRX and sETH
+	Prep Geoff 1250e18 ZRX sZRX
+	Mint Geoff 1250e18 sZRX -- Liquidity -> 0.4 * 0.002 * 1250e18 = 1.0e18
+	SendMintEth Geoff 2.5e18 sETH -- Liqiuidity -> 0.8 * 1.0 * 2.5e18 = 2.0e18
+	-- Check liquidity is zero when not in any markets
+	Assert Equal (Comptroller Liquidity Geoff) Zero
+	-- Enter ZRX and check liquidity
+	EnterMarkets Geoff sZRX
+	Assert Equal (Comptroller Liquidity Geoff) 1.0e18
+	-- Fail to borrow BAT due to liquidity
+	Give sBAT 1000e18 BAT
+	HoldInvariants
+	Borrow Geoff 1000e18 sBAT -- 1000e18 * 0.0015 = 1.5e18 required liquidity
+							  -- But since we're only in ZRX, we only have 1.0e18 liquidity
+	Assert Failure COMPTROLLER_REJECTION BORROW_COMPTROLLER_REJECTION INSUFFICIENT_LIQUIDITY
+	-- Enter sETH and check liquidity
+	EnterMarkets Geoff sETH
+	Assert Equal (Comptroller Liquidity Geoff) 3.0e18 -- Sum of sETH and sZRX liquidity from above
+	-- Borrow previous BAT amount given liquidity
+	Borrow Geoff 1000e18 sBAT
+	Assert Equal (Comptroller Liquidity Geoff) 1.5e18 -- Less the borrow amount's toll
+	-- Try to exit a eth market but fail due to given borrow requiring eth as collateral
+	HoldInvariants
+	ExitMarket Geoff sETH
+	Assert Failure REJECTION EXIT_MARKET_REJECTION INSUFFICIENT_LIQUIDITY -- Liquidity check fails
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address sBAT) (Address sETH)]
+	-- Repay some borrow and exit market OMG
+	Allow Geoff sBAT
+	RepayBorrow Geoff 500e18 sBAT
+	Assert Equal (Comptroller Liquidity Geoff) 2.25e18 -- With 0.75e18 repaid
+	ExitMarket Geoff sETH
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address sBAT)]
+	Assert Equal (Comptroller Liquidity Geoff) 0.25e18 -- Less Eth's 2.0e18 collateral weight
+	-- Try and exit sBAT (firist without, then after, repaying)
+	HoldInvariants
+	ExitMarket Geoff sBAT
+	Assert Failure NONZERO_BORROW_BALANCE EXIT_MARKET_BALANCE_OWED
+	RepayBorrow Geoff UInt256Max sBAT
+	ExitMarket Geoff sBAT
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX)]
+	Assert Equal (Comptroller Liquidity Geoff) 1.0e18 -- Back to just sZRX
+	-- Exit sZRX
+	ExitMarket Geoff sZRX
+	Assert Equal (Comptroller AssetsIn Geoff) []
+	Assert Equal (Comptroller Liquidity Geoff) 0e18 -- Back to nothing
