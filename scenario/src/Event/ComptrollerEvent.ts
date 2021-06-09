@@ -24,7 +24,7 @@ import {
 } from '../Value';
 import {Arg, Command, View, processCommandEvent} from '../Command';
 import {buildComptrollerImpl} from '../Builder/ComptrollerImplBuilder';
-import {ComptrollerErrorReporter} from '../ErrorReporter';
+import {ComptrollerErrorReporter, STokenErrorReporter} from '../ErrorReporter';
 import {getComptroller, getComptrollerImpl} from '../ContractLookup';
 import {getLiquidity} from '../Value/ComptrollerValue';
 import {getSTokenV} from '../Value/STokenValue';
@@ -230,6 +230,18 @@ async function refreshStrikeSpeeds(world: World, from: string, comptroller: Comp
   world = addAction(
     world,
     `Refreshed STRK speeds`,
+    invokation
+  );
+
+  return world;
+}
+
+async function setStrikeSpeed(world: World, from: string, comptroller: Comptroller, sToken: SToken, speed: NumberV): Promise<World> {
+  let invokation = await invoke(world, comptroller.methods._setStrikeSpeed(sToken._address, speed.encode()), from, ComptrollerErrorReporter);
+  
+  world = addAction(
+    world,
+    `Strike speed for market ${sToken._address} set to ${speed.show()}`,
     invokation
   );
 
@@ -663,7 +675,22 @@ export function comptrollerCommands() {
       ],
       (world, from, {comptroller}) => refreshStrikeSpeeds(world, from, comptroller)
     ),
-    new Command<{comptroller: Comptroller, holder: AddressV}>(`
+
+    new Command<{comptroller: Comptroller, sToken: SToken, speed: NumberV}>(`
+      #### SetStrikeSpeed
+      * "Comptroller SetStrikeSpeed <sToken> <rate> " - Sets STRK speed for market
+      * E.g. "Comptroller SetStrikeSpeed sToken 10000
+      `,
+      "SetStrikeSpeed",
+      [
+        new Arg("comptroller", getComptroller, { implicit: true }),
+        new Arg("sToken", getSTokenV),
+        new Arg("speed", getNumberV)
+      ],
+      (world, from, { comptroller, sToken, speed }) => setStrikeSpeed(world, from, comptroller, sToken, speed)
+    ),
+
+      new Command<{comptroller: Comptroller, holder: AddressV}>(`
       #### ClaimStrike
 
       * "Comptroller ClaimStrike <holder>" - Claims strk
