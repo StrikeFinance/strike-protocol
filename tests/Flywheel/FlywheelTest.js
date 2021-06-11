@@ -92,10 +92,75 @@ describe('Flywheel', () => {
 
   describe('getStrikeMarkets()', () => {
     it('should return the strk markets', async () => {
+      for (let mkt of [sLOW, sREP, sZRX]) {
+        await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      }
+
       expect(await call(comptroller, 'getStrikeMarkets')).toEqual(
         [sLOW, sREP, sZRX].map((c) => c._address)
       );
     });
+  });
+
+  describe('SetStrikeSpeed()', () => {
+    it('Should update market when calling setStrikeSpeed', async() => {
+      const mkt = sREP;
+      await send(comptroller, 'setBlockNumber', [0]);
+      await send(mkt, 'harnessSetTotalSupply', [etherUnsigned(10e18)]);
+
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await fastForward(comptroller, 20);
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(1)]);
+
+      const { index, block } = await call(comptroller, 'strikeSupplyState', [mkt._address]);
+      expect(index).toEqualNumber(2e36);
+      expect(block).toEqualNumber(20);
+    });
+
+    it('Should correctly drop a STRK market if called by admin', async() => {
+      for (let mkt of [sLOW, sREP, sZRX]) {
+        await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      }
+
+      const tx = await send(comptroller, '_setStrikeSpeed', [sLOW._address, 0]);
+      expect(await call(comptroller, 'getStrikeMarkets')).toEqual(
+        [sREP, sZRX].map((coin) => coin._address)
+      );
+
+      expect(tx).toHaveLog('StrikeSpeedUpdated', {
+        sToken: sLOW._address,
+        newSpeed: 0
+      });
+    });
+
+    it('should correctly drop a STRK market from middle of array', async () => {
+      for (let mkt of [sLOW, sREP, sZRX]) {
+        await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      }
+      await send(comptroller, '_setStrikeSpeed', [sREP._address, 0]);
+      expect(await call(comptroller, 'getStrikeMarkets')).toEqual(
+        [sLOW, sZRX].map((c) => c._address)
+      );
+    });
+
+    it('should not drop a STRK market unless called by admin', async () => {
+      for (let mkt of [sLOW, sREP, sZRX]) {
+        await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      }
+      await expect(
+        send(comptroller, '_setStrikeSpeed', [sLOW._address, 0], {from: a1})
+      ).rejects.toRevert('revert only admin can set strike speed');
+    });
+
+    it('should not add non-listed markets', async () => {
+      const vBAT = await makeSToken({ comptroller, supportMarket: false });
+      await expect(
+        send(comptroller, 'harnessAddStrikeMarkets', [[vBAT._address]])
+      ).rejects.toRevert('revert strike market is not listed');
+
+      const markets = await call(comptroller, 'getStrikeMarkets');
+      expect(markets).toEqual([]);
+    });    
   });
 
   describe('updateStrikeBorrowIndex()', () => {
@@ -103,7 +168,7 @@ describe('Flywheel', () => {
       const mkt = sREP;
       await send(comptroller, 'setBlockNumber', [100]);
       await send(mkt, 'harnessSetTotalBorrows', [etherUnsigned(11e18)]);
-      await send(comptroller, 'setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
       await send(comptroller, 'harnessUpdateStrikeBorrowIndex', [
         mkt._address,
         etherExp(1.1),
@@ -145,7 +210,7 @@ describe('Flywheel', () => {
 
     it('should not update index if no blocks passed since last accrual', async () => {
       const mkt = sREP;
-      await send(comptroller, 'setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
       await send(comptroller, 'harnessUpdateStrikeBorrowIndex', [
         mkt._address,
         etherExp(1.1),
@@ -158,7 +223,7 @@ describe('Flywheel', () => {
 
     it('should not update index if strk speed is 0', async () => {
       const mkt = sREP;
-      await send(comptroller, 'setStrikeSpeed', [mkt._address, etherExp(0)]);
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0)]);
       await send(comptroller, 'setBlockNumber', [100]);
       await send(comptroller, 'harnessUpdateStrikeBorrowIndex', [
         mkt._address,
@@ -176,7 +241,7 @@ describe('Flywheel', () => {
       const mkt = sREP;
       await send(comptroller, 'setBlockNumber', [100]);
       await send(mkt, 'harnessSetTotalSupply', [etherUnsigned(10e18)]);
-      await send(comptroller, 'setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
       await send(comptroller, 'harnessUpdateStrikeSupplyIndex', [mkt._address]);
       /*
         suppyTokens = 10e18
@@ -214,7 +279,7 @@ describe('Flywheel', () => {
       const mkt = sREP;
       await send(comptroller, 'setBlockNumber', [0]);
       await send(mkt, 'harnessSetTotalSupply', [etherUnsigned(10e18)]);
-      await send(comptroller, 'setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
       await send(comptroller, 'harnessUpdateStrikeSupplyIndex', [mkt._address]);
 
       const {index, block} = await call(comptroller, 'strikeSupplyState', [mkt._address]);
@@ -223,10 +288,11 @@ describe('Flywheel', () => {
     });
 
     it('should not matter if the index is updated multiple times', async () => {
-      const strikeRemaining = strikeRate.mul(100)
+      const strikeRemaining = strikeRate.mul(100);
+      await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address]]);
       await send(comptroller.strk, 'transfer', [comptroller._address, strikeRemaining], {from: root});
       await pretendBorrow(sLOW, a1, 1, 1, 100);
-      await send(comptroller, 'refreshStrikeSpeeds');
+      await send(comptroller, 'harnessRefreshStrikeSpeeds');
 
       await quickMint(sLOW, a2, etherUnsigned(10e18));
       await quickMint(sLOW, a3, etherUnsigned(15e18));
@@ -262,9 +328,9 @@ describe('Flywheel', () => {
       expect(a3Accrued1).toEqualNumber(a2Accrued2.sub(a2Accrued1));
 
       expect(txT1.gasUsed).toBeLessThan(200000);
-      expect(txT1.gasUsed).toBeGreaterThan(150000);
-      expect(txT2.gasUsed).toBeLessThan(200000);
-      expect(txT2.gasUsed).toBeGreaterThan(150000);
+      expect(txT1.gasUsed).toBeGreaterThan(100000);
+      expect(txT2.gasUsed).toBeLessThan(150000);
+      expect(txT2.gasUsed).toBeGreaterThan(100000);
     });
   });
 
@@ -298,8 +364,8 @@ describe('Flywheel', () => {
                        = 5e18 * 5e36 / 1e36 = 25e18
       */
       const tx = await send(comptroller, "harnessDistributeBorrowerStrike", [mkt._address, a1, etherUnsigned(1.1e18)]);
-      expect(await strikeAccrued(comptroller, a1)).toEqualNumber(0);
-      expect(await strikeBalance(comptroller, a1)).toEqualNumber(25e18);
+      expect(await strikeAccrued(comptroller, a1)).toEqualNumber(25e18);
+      expect(await strikeBalance(comptroller, a1)).toEqualNumber(0);
       expect(tx).toHaveLog('DistributedBorrowerStrike', {
         sToken: mkt._address,
         borrower: a1,
@@ -359,7 +425,7 @@ describe('Flywheel', () => {
                         = 5e18 * 5e36 / 1e36 = 25e18
       */
 
-      const tx = await send(comptroller, "harnessDistributeSupplierStrike", [mkt._address, a1]);
+      const tx = await send(comptroller, "harnessDistributeAllSupplierStrike", [mkt._address, a1]);
       expect(await strikeAccrued(comptroller, a1)).toEqualNumber(0);
       expect(await strikeBalance(comptroller, a1)).toEqualNumber(25e18);
       expect(tx).toHaveLog('DistributedSupplierStrike', {
@@ -385,7 +451,7 @@ describe('Flywheel', () => {
                         = 5e18 * 4e36 / 1e36 = 20e18
       */
 
-      await send(comptroller, "harnessDistributeSupplierStrike", [mkt._address, a1]);
+      await send(comptroller, "harnessDistributeAllSupplierStrike", [mkt._address, a1]);
       expect(await strikeAccrued(comptroller, a1)).toEqualNumber(0);
       expect(await strikeBalance(comptroller, a1)).toEqualNumber(20e18);
     });
@@ -467,7 +533,8 @@ describe('Flywheel', () => {
       const strikeRemaining = strikeRate.mul(100), mintAmount = etherUnsigned(12e18), deltaBlocks = 10;
       await send(comptroller.strk, 'transfer', [comptroller._address, strikeRemaining], {from: root});
       await pretendBorrow(sLOW, a1, 1, 1, 100);
-      await send(comptroller, 'refreshStrikeSpeeds');
+      await send(comptroller, '_setStrikeSpeed', [sLOW._address, etherExp(0.5)]);
+      await send(comptroller, 'harnessRefreshStrikeSpeeds');
       const speed = await call(comptroller, 'strikeSpeeds', [sLOW._address]);
       const a2AccruedPre = await strikeAccrued(comptroller, a2);
       const strikeBalancePre = await strikeBalance(comptroller, a2);
@@ -476,7 +543,7 @@ describe('Flywheel', () => {
       const tx = await send(comptroller, 'claimStrike', [a2]);
       const a2AccruedPost = await strikeAccrued(comptroller, a2);
       const strikeBalancePost = await strikeBalance(comptroller, a2);
-      expect(tx.gasUsed).toBeLessThan(330000);
+      expect(tx.gasUsed).toBeLessThan(400000);
       expect(speed).toEqualNumber(strikeRate);
       expect(a2AccruedPre).toEqualNumber(0);
       expect(a2AccruedPost).toEqualNumber(0);
@@ -488,7 +555,8 @@ describe('Flywheel', () => {
       const strikeRemaining = strikeRate.mul(100), mintAmount = etherUnsigned(12e18), deltaBlocks = 10;
       await send(comptroller.strk, 'transfer', [comptroller._address, strikeRemaining], {from: root});
       await pretendBorrow(sLOW, a1, 1, 1, 100);
-      await send(comptroller, 'refreshStrikeSpeeds');
+      await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address]]);
+      await send(comptroller, 'harnessRefreshStrikeSpeeds');
       const speed = await call(comptroller, 'strikeSpeeds', [sLOW._address]);
       const a2AccruedPre = await strikeAccrued(comptroller, a2);
       const strikeBalancePre = await strikeBalance(comptroller, a2);
@@ -497,7 +565,7 @@ describe('Flywheel', () => {
       const tx = await send(comptroller, 'claimStrike', [a2, [sLOW._address]]);
       const a2AccruedPost = await strikeAccrued(comptroller, a2);
       const strikeBalancePost = await strikeBalance(comptroller, a2);
-      expect(tx.gasUsed).toBeLessThan(160000);
+      expect(tx.gasUsed).toBeLessThan(220000);
       expect(speed).toEqualNumber(strikeRate);
       expect(a2AccruedPre).toEqualNumber(0);
       expect(a2AccruedPost).toEqualNumber(0);
@@ -535,7 +603,7 @@ describe('Flywheel', () => {
       }
 
       await pretendBorrow(sLOW, root, 1, 1, etherExp(10));
-      await send(comptroller, 'refreshStrikeSpeeds');
+      await send(comptroller, 'harnessRefreshStrikeSpeeds');
 
       await fastForward(comptroller, deltaBlocks);
 
@@ -553,7 +621,8 @@ describe('Flywheel', () => {
         send(sLOW, 'mint', [mintAmount], { from });
       }
       await pretendBorrow(sLOW, root, 1, 1, etherExp(10));
-      await send(comptroller, 'refreshStrikeSpeeds');
+      await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address]]);
+      await send(comptroller, 'harnessRefreshStrikeSpeeds');
 
       await fastForward(comptroller, deltaBlocks);
 
@@ -575,7 +644,8 @@ describe('Flywheel', () => {
         send(sLOW, 'mint', [mintAmount], { from });
       }
       await pretendBorrow(sLOW, root, 1, 1, etherExp(10));
-      await send(comptroller, 'refreshStrikeSpeeds');
+      await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address]]);
+      await send(comptroller, 'harnessRefreshStrikeSpeeds');
 
       await fastForward(comptroller, deltaBlocks);
 
@@ -596,7 +666,8 @@ describe('Flywheel', () => {
         await send(sLOW, 'harnessIncrementTotalBorrows', [borrowAmt]);
         await send(sLOW, 'harnessSetAccountBorrows', [acct, borrowAmt, borrowIdx]);
       }
-      await send(comptroller, 'refreshStrikeSpeeds');
+      await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address]]);
+      await send(comptroller, 'harnessRefreshStrikeSpeeds');
 
       await send(comptroller, 'harnessFastForward', [10]);
 
@@ -615,36 +686,30 @@ describe('Flywheel', () => {
     });
   });
 
-  describe('refreshStrikeSpeeds', () => {
+  describe('harnessRefreshStrikeSpeeds', () => {
     it('should start out 0', async () => {
-      await send(comptroller, 'refreshStrikeSpeeds');
+      await send(comptroller, 'harnessRefreshStrikeSpeeds');
       const speed = await call(comptroller, 'strikeSpeeds', [sLOW._address]);
       expect(speed).toEqualNumber(0);
     });
 
     it('should get correct speeds with borrows', async () => {
       await pretendBorrow(sLOW, a1, 1, 1, 100);
-      const tx = await send(comptroller, 'refreshStrikeSpeeds');
+      await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address]]);
+      const tx = await send(comptroller, 'harnessRefreshStrikeSpeeds');
       const speed = await call(comptroller, 'strikeSpeeds', [sLOW._address]);
       expect(speed).toEqualNumber(strikeRate);
       expect(tx).toHaveLog(['StrikeSpeedUpdated', 0], {
         sToken: sLOW._address,
         newSpeed: speed
       });
-      expect(tx).toHaveLog(['StrikeSpeedUpdated', 1], {
-        sToken: sREP._address,
-        newSpeed: 0
-      });
-      expect(tx).toHaveLog(['StrikeSpeedUpdated', 2], {
-        sToken: sZRX._address,
-        newSpeed: 0
-      });
     });
 
     it('should get correct speeds for 2 assets', async () => {
       await pretendBorrow(sLOW, a1, 1, 1, 100);
       await pretendBorrow(sZRX, a1, 1, 1, 100);
-      await send(comptroller, 'refreshStrikeSpeeds');
+      await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address, sZRX._address]]);
+      await send(comptroller, 'harnessRefreshStrikeSpeeds');
       const speed1 = await call(comptroller, 'strikeSpeeds', [sLOW._address]);
       const speed2 = await call(comptroller, 'strikeSpeeds', [sREP._address]);
       const speed3 = await call(comptroller, 'strikeSpeeds', [sZRX._address]);
@@ -652,50 +717,19 @@ describe('Flywheel', () => {
       expect(speed2).toEqualNumber(0);
       expect(speed3).toEqualNumber(strikeRate.div(4).mul(3));
     });
-
-    it('should not be callable inside a contract', async () => {
-      await pretendBorrow(sLOW, a1, 1, 1, 100);
-      await pretendBorrow(sZRX, a1, 1, 1, 100);
-      await expect(deploy('RefreshSpeedsProxy', [comptroller._address])).rejects.toRevert('revert only externally owned accounts may refresh speeds');
-    });
   });
 
   describe('_addStrikeMarkets', () => {
     it('should correctly add a strike market if called by admin', async () => {
       const sBAT = await makeSToken({comptroller, supportMarket: true});
-      const tx = await send(comptroller, '_addStrikeMarkets', [[sBAT._address]]);
+      const tx1 = await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address, sREP._address, sZRX._address]]);
+      const tx2 = await send(comptroller, 'harnessAddStrikeMarkets', [[sBAT._address]]);
       const markets = await call(comptroller, 'getStrikeMarkets');
       expect(markets).toEqual([sLOW, sREP, sZRX, sBAT].map((c) => c._address));
-      expect(tx).toHaveLog('MarketStriked', {
+      expect(tx2).toHaveLog('StrikeSpeedUpdated', {
         sToken: sBAT._address,
-        isStriked: true
+        newSpeed: 1
       });
-    });
-
-    it('should revert if not called by admin', async () => {
-      const sBAT = await makeSToken({ comptroller, supportMarket: true });
-      await expect(
-        send(comptroller, '_addStrikeMarkets', [[sBAT._address]], {from: a1})
-      ).rejects.toRevert('revert only admin can add strike market');
-    });
-
-    it('should not add non-listed markets', async () => {
-      const sBAT = await makeSToken({ comptroller, supportMarket: false });
-      await expect(
-        send(comptroller, '_addStrikeMarkets', [[sBAT._address]])
-      ).rejects.toRevert('revert strike market is not listed');
-
-      const markets = await call(comptroller, 'getStrikeMarkets');
-      expect(markets).toEqual([sLOW, sREP, sZRX].map((c) => c._address));
-    });
-
-    it('should not add duplicate markets', async () => {
-      const sBAT = await makeSToken({comptroller, supportMarket: true});
-      await send(comptroller, '_addStrikeMarkets', [[sBAT._address]]);
-
-      await expect(
-        send(comptroller, '_addStrikeMarkets', [[sBAT._address]])
-      ).rejects.toRevert('revert strike market already added');
     });
 
     it('should not write over a markets existing state', async () => {
@@ -703,11 +737,12 @@ describe('Flywheel', () => {
       const bn0 = 10, bn1 = 20;
       const idx = etherUnsigned(1.5e36);
 
+      await send(comptroller, "harnessAddStrikeMarkets", [[mkt]]);
       await send(comptroller, "setStrikeSupplyState", [mkt, idx, bn0]);
       await send(comptroller, "setStrikeBorrowState", [mkt, idx, bn0]);
       await send(comptroller, "setBlockNumber", [bn1]);
-      await send(comptroller, "_dropStrikeMarket", [mkt]);
-      await send(comptroller, "_addStrikeMarkets", [[mkt]]);
+      await send(comptroller, "_setStrikeSpeed", [mkt, 0]);
+      await send(comptroller, "harnessAddStrikeMarkets", [[mkt]]);
 
       const supplyState = await call(comptroller, 'strikeSupplyState', [mkt]);
       expect(supplyState.block).toEqual(bn1.toString());
@@ -716,59 +751,6 @@ describe('Flywheel', () => {
       const borrowState = await call(comptroller, 'strikeBorrowState', [mkt]);
       expect(borrowState.block).toEqual(bn1.toString());
       expect(borrowState.index).toEqual(idx.toString());
-    });
-  });
-
-  describe('_dropStrikeMarket', () => {
-    it('should correctly drop a strike market if called by admin', async () => {
-      const tx = await send(comptroller, '_dropStrikeMarket', [sLOW._address]);
-      expect(await call(comptroller, 'getStrikeMarkets')).toEqual(
-        [sREP, sZRX].map((c) => c._address)
-      );
-      expect(tx).toHaveLog('MarketStriked', {
-        sToken: sLOW._address,
-        isStriked: false
-      });
-    });
-
-    it('should correctly drop a strike market from middle of array', async () => {
-      await send(comptroller, '_dropStrikeMarket', [sREP._address]);
-      expect(await call(comptroller, 'getStrikeMarkets')).toEqual(
-        [sLOW, sZRX].map((c) => c._address)
-      );
-    });
-
-    it('should not drop a strike market unless called by admin', async () => {
-      await expect(
-        send(comptroller, '_dropStrikeMarket', [sLOW._address], {from: a1})
-      ).rejects.toRevert('revert only admin can drop strike market');
-    });
-
-    it('should not drop a strike market already dropped', async () => {
-      await send(comptroller, '_dropStrikeMarket', [sLOW._address]);
-      await expect(
-        send(comptroller, '_dropStrikeMarket', [sLOW._address])
-      ).rejects.toRevert('revert market is not a strike market');
-    });
-  });
-
-  describe('_setStrikeRate', () => {
-    it('should correctly change strike rate if called by admin', async () => {
-      expect(await call(comptroller, 'strikeRate')).toEqualNumber(etherUnsigned(1e18));
-      const tx1 = await send(comptroller, '_setStrikeRate', [etherUnsigned(3e18)]);
-      expect(await call(comptroller, 'strikeRate')).toEqualNumber(etherUnsigned(3e18));
-      const tx2 = await send(comptroller, '_setStrikeRate', [etherUnsigned(2e18)]);
-      expect(await call(comptroller, 'strikeRate')).toEqualNumber(etherUnsigned(2e18));
-      expect(tx2).toHaveLog('NewStrikeRate', {
-        oldStrikeRate: etherUnsigned(3e18),
-        newStrikeRate: etherUnsigned(2e18)
-      });
-    });
-
-    it('should not change strike rate unless called by admin', async () => {
-      await expect(
-        send(comptroller, '_setStrikeRate', [sLOW._address], {from: a1})
-      ).rejects.toRevert('revert only admin can change strike rate');
     });
   });
 });

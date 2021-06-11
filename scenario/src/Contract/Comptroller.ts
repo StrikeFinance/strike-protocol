@@ -58,6 +58,7 @@ interface ComptrollerMethods {
   strikeSpeeds(string): Callable<string>
   claimStrike(string): Sendable<void>
   _setStrikeRate(encodedNumber): Sendable<void>
+  _setStrikeSpeed(sToken: string, encodedNumber): Sendable<void>
 }
 
 export interface Comptroller extends Contract {

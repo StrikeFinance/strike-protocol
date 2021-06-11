@@ -247,7 +247,7 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
 
         // Keep the flywheel moving
         updateStrikeSupplyIndex(sToken);
-        distributeSupplierStrike(sToken, minter, false);
+        distributeSupplierStrike(sToken, minter);
 
         return uint(Error.NO_ERROR);
     }
@@ -287,7 +287,7 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
 
         // Keep the flywheel moving
         updateStrikeSupplyIndex(sToken);
-        distributeSupplierStrike(sToken, redeemer, false);
+        distributeSupplierStrike(sToken, redeemer);
 
         return uint(Error.NO_ERROR);
     }
@@ -376,7 +376,7 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
         // Keep the flywheel moving
         Exp memory borrowIndex = Exp({mantissa: SToken(sToken).borrowIndex()});
         updateStrikeBorrowIndex(sToken, borrowIndex);
-        distributeBorrowerStrike(sToken, borrower, borrowIndex, false);
+        distributeBorrowerStrike(sToken, borrower, borrowIndex);
 
         return uint(Error.NO_ERROR);
     }
@@ -424,7 +424,7 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
         // Keep the flywheel moving
         Exp memory borrowIndex = Exp({mantissa: SToken(sToken).borrowIndex()});
         updateStrikeBorrowIndex(sToken, borrowIndex);
-        distributeBorrowerStrike(sToken, borrower, borrowIndex, false);
+        distributeBorrowerStrike(sToken, borrower, borrowIndex);
 
         return uint(Error.NO_ERROR);
     }
@@ -557,8 +557,8 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
 
         // Keep the flywheel moving
         updateStrikeSupplyIndex(sTokenCollateral);
-        distributeSupplierStrike(sTokenCollateral, borrower, false);
-        distributeSupplierStrike(sTokenCollateral, liquidator, false);
+        distributeSupplierStrike(sTokenCollateral, borrower);
+        distributeSupplierStrike(sTokenCollateral, liquidator);
 
         return uint(Error.NO_ERROR);
     }
@@ -611,8 +611,8 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
 
         // Keep the flywheel moving
         updateStrikeSupplyIndex(sToken);
-        distributeSupplierStrike(sToken, src, false);
-        distributeSupplierStrike(sToken, dst, false);
+        distributeSupplierStrike(sToken, src);
+        distributeSupplierStrike(sToken, dst);
 
         return uint(Error.NO_ERROR);
     }
@@ -1096,40 +1096,48 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
     /*** STRK Distribution ***/
 
     /**
-     * @notice Recalculate and update STRK speeds for all STRK markets
+     * @notice Set STRK speed for a single market
+     * @param sToken The market whose STRK speed to update
+     * @param strikeSpeed New STRK speed for market
      */
-    function refreshStrikeSpeeds() public {
-        require(msg.sender == tx.origin, "only externally owned accounts may refresh speeds");
-        refreshStrikeSpeedsInternal();
+    function _setStrikeSpeed(SToken sToken, uint strikeSpeed) public {
+        require(adminOrInitializing(), "only admin can set strike speed");
+        setStrikeSpeedInternal(sToken, strikeSpeed);
     }
 
-    function refreshStrikeSpeedsInternal() internal {
-        SToken[] memory allMarkets_ = allMarkets;
+    function setStrikeSpeedInternal(SToken sToken, uint strikeSpeed) internal {
+        uint currentStrikeSpeed = strikeSpeeds[address(sToken)];
 
-        for (uint i = 0; i < allMarkets_.length; i++) {
-            SToken sToken = allMarkets_[i];
-            Exp memory borrowIndex = Exp({mantissa: sToken.borrowIndex()});
+        if (currentStrikeSpeed != 0) {
+            // STRK speed could be set to 0 to half liquidity rewards for a market
+            Exp memory borrowIndex = Exp({
+                mantissa: sToken.borrowIndex()
+            });
             updateStrikeSupplyIndex(address(sToken));
             updateStrikeBorrowIndex(address(sToken), borrowIndex);
-        }
+        } else if (strikeSpeed != 0) {
+            // Add the STRK market
+            Market storage market = markets[address(sToken)];
+            require(market.isListed == true, "strike market is not listed");
 
-        Exp memory totalUtility = Exp({mantissa: 0});
-        Exp[] memory utilities = new Exp[](allMarkets_.length);
-        for (uint i = 0; i < allMarkets_.length; i++) {
-            SToken sToken = allMarkets_[i];
-            if (markets[address(sToken)].isStriked) {
-                Exp memory assetPrice = Exp({mantissa: oracle.getUnderlyingPrice(sToken)});
-                Exp memory utility = mul_(assetPrice, sToken.totalBorrows());
-                utilities[i] = utility;
-                totalUtility = add_(totalUtility, utility);
+            if (strikeSupplyState[address(sToken)].index == 0 && strikeSupplyState[address(sToken)].block == 0) {
+                strikeSupplyState[address(sToken)] = StrikeMarketState({
+                    index: strikeInitialIndex,
+                    block: safe32(getBlockNumber(), "block number exceeds 32 bits")
+                });
             }
+
+            if (strikeBorrowState[address(sToken)].index == 0 && strikeBorrowState[address(sToken)].block == 0) {
+                strikeBorrowState[address(sToken)] = StrikeMarketState({
+                    index: strikeInitialIndex,
+                    block: safe32(getBlockNumber(), "block number exceeds 32 bits")
+                });
+            }            
         }
 
-        for (uint i = 0; i < allMarkets_.length; i++) {
-            SToken sToken = allMarkets[i];
-            uint newSpeed = totalUtility.mantissa > 0 ? mul_(strikeRate, div_(utilities[i], totalUtility)) : 0;
-            strikeSpeeds[address(sToken)] = newSpeed;
-            emit StrikeSpeedUpdated(sToken, newSpeed);
+        if (currentStrikeSpeed != strikeSpeed) {
+            strikeSpeeds[address(sToken)] = strikeSpeed;
+            emit StrikeSpeedUpdated(sToken, strikeSpeed);
         }
     }
 
@@ -1184,7 +1192,7 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
      * @param sToken The market in which the supplier is interacting
      * @param supplier The address of the supplier to distribute STRK to
      */
-    function distributeSupplierStrike(address sToken, address supplier, bool distributeAll) internal {
+    function distributeSupplierStrike(address sToken, address supplier) internal {
         StrikeMarketState storage supplyState = strikeSupplyState[sToken];
         Double memory supplyIndex = Double({mantissa: supplyState.index});
         Double memory supplierIndex = Double({mantissa: strikeSupplierIndex[sToken][supplier]});
@@ -1198,7 +1206,7 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
         uint supplierTokens = SToken(sToken).balanceOf(supplier);
         uint supplierDelta = mul_(supplierTokens, deltaIndex);
         uint supplierAccrued = add_(strikeAccrued[supplier], supplierDelta);
-        strikeAccrued[supplier] = transferStrike(supplier, supplierAccrued, distributeAll ? 0 : strikeClaimThreshold);
+        strikeAccrued[supplier] = supplierAccrued;
         emit DistributedSupplierStrike(SToken(sToken), supplier, supplierDelta, supplyIndex.mantissa);
     }
 
@@ -1208,7 +1216,7 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
      * @param sToken The market in which the borrower is interacting
      * @param borrower The address of the borrower to distribute STRK to
      */
-    function distributeBorrowerStrike(address sToken, address borrower, Exp memory marketBorrowIndex, bool distributeAll) internal {
+    function distributeBorrowerStrike(address sToken, address borrower, Exp memory marketBorrowIndex) internal {
         StrikeMarketState storage borrowState = strikeBorrowState[sToken];
         Double memory borrowIndex = Double({mantissa: borrowState.index});
         Double memory borrowerIndex = Double({mantissa: strikeBorrowerIndex[sToken][borrower]});
@@ -1219,7 +1227,7 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
             uint borrowerAmount = div_(SToken(sToken).borrowBalanceStored(borrower), marketBorrowIndex);
             uint borrowerDelta = mul_(borrowerAmount, deltaIndex);
             uint borrowerAccrued = add_(strikeAccrued[borrower], borrowerDelta);
-            strikeAccrued[borrower] = transferStrike(borrower, borrowerAccrued, distributeAll ? 0 : strikeClaimThreshold);
+            strikeAccrued[borrower] = borrowerAccrued;
             emit DistributedBorrowerStrike(SToken(sToken), borrower, borrowerDelta, borrowIndex.mantissa);
         }
     }
@@ -1273,20 +1281,39 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
         for (uint i = 0; i < sTokens.length; i++) {
             SToken sToken = sTokens[i];
             require(markets[address(sToken)].isListed, "market must be listed");
-            if (borrowers == true) {
+            if (borrowers) {
                 Exp memory borrowIndex = Exp({mantissa: sToken.borrowIndex()});
                 updateStrikeBorrowIndex(address(sToken), borrowIndex);
                 for (uint j = 0; j < holders.length; j++) {
-                    distributeBorrowerStrike(address(sToken), holders[j], borrowIndex, true);
+                    distributeBorrowerStrike(address(sToken), holders[j], borrowIndex);
+                    strikeAccrued[holders[j]] = grantSTRKInternal(holders[j], strikeAccrued[holders[j]]);
                 }
             }
-            if (suppliers == true) {
+            if (suppliers) {
                 updateStrikeSupplyIndex(address(sToken));
                 for (uint j = 0; j < holders.length; j++) {
-                    distributeSupplierStrike(address(sToken), holders[j], true);
+                    distributeSupplierStrike(address(sToken), holders[j]);
+                    strikeAccrued[holders[j]] = grantSTRKInternal(holders[j], strikeAccrued[holders[j]]);
                 }
             }
         }
+    }
+
+    /**
+     * @notice Transfer STRK to the user
+     * @dev Note: If there is not enough STRK, we do not perform the transfer all.
+     * @param user The address of the user to transfer STRK to
+     * @param amount The amount of STRK to (possibly) transfer
+     * @return The amount of STRK which was NOT transferred to the user
+     */
+    function grantSTRKInternal(address user, uint amount) internal returns (uint) {
+        STRK strk = STRK(getSTRKAddress());
+        uint strikeRemaining = strk.balanceOf(address(this));
+        if (amount > 0 && amount <= strikeRemaining) {
+            strk.transfer(user, amount);
+            return 0;
+        }
+        return amount;
     }
 
     /*** STRK Distribution Admin ***/
@@ -1302,7 +1329,7 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
         strikeRate = strikeRate_;
         emit NewStrikeRate(oldRate, strikeRate_);
 
-        refreshStrikeSpeedsInternal();
+        // refreshStrikeSpeedsInternal();
     }
 
     /**
@@ -1316,7 +1343,7 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
             _addStrikeMarketInternal(sTokens[i]);
         }
 
-        refreshStrikeSpeedsInternal();
+        // refreshStrikeSpeedsInternal();
     }
 
     function _addStrikeMarketInternal(address sToken) internal {
@@ -1355,7 +1382,7 @@ contract Comptroller is ComptrollerV3Storage, ComptrollerInterface, ComptrollerE
         market.isStriked = false;
         emit MarketStriked(SToken(sToken), false);
 
-        refreshStrikeSpeedsInternal();
+        // refreshStrikeSpeedsInternal();
     }
 
     /**

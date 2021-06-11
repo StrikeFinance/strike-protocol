@@ -67,16 +67,67 @@ contract ComptrollerHarness is Comptroller {
         updateStrikeSupplyIndex(sToken);
     }
 
+    function harnessDistributeAllBorrowerStrike(address sToken, address borrower, uint marketBorrowIndexMantissa) public {
+        distributeBorrowerStrike(sToken, borrower, Exp({mantissa: marketBorrowIndexMantissa}));
+        strikeAccrued[borrower] = grantSTRKInternal(borrower, strikeAccrued[borrower]);
+    }
+
+    function harnessDistributeAllSupplierStrike(address sToken, address supplier) public {
+        distributeSupplierStrike(sToken, supplier);
+        strikeAccrued[supplier] = grantSTRKInternal(supplier, strikeAccrued[supplier]);
+    }
+
+    /**
+     * @notice Recalculate and update STRK speeds for all STRK markets
+     */
+    function harnessRefreshStrikeSpeeds() public {
+        SToken[] memory allMarkets_ = allMarkets;
+
+        for (uint i = 0; i < allMarkets_.length; i++) {
+            SToken sToken = allMarkets_[i];
+            Exp memory borrowIndex = Exp({mantissa: sToken.borrowIndex()});
+            updateStrikeSupplyIndex(address(sToken));
+            updateStrikeBorrowIndex(address(sToken), borrowIndex);
+        }
+
+        Exp memory totalUtility = Exp({mantissa: 0});
+        Exp[] memory utilities = new Exp[](allMarkets_.length);
+        for (uint i = 0; i < allMarkets_.length; i++) {
+            SToken sToken = allMarkets_[i];
+            if (strikeSpeeds[address(sToken)] > 0) {
+                Exp memory assetPrice = Exp({mantissa: oracle.getUnderlyingPrice(sToken)});
+                Exp memory utility = mul_(assetPrice, sToken.totalBorrows());
+                utilities[i] = utility;
+                totalUtility = add_(totalUtility, utility);
+            }
+        }
+
+        for (uint i = 0; i < allMarkets_.length; i++) {
+            SToken sToken = allMarkets[i];
+            uint newSpeed = totalUtility.mantissa > 0 ? mul_(strikeRate, div_(utilities[i], totalUtility)) : 0;
+            setStrikeSpeedInternal(sToken, newSpeed);
+        }
+    }
+
     function harnessDistributeBorrowerStrike(address sToken, address borrower, uint marketBorrowIndexMantissa) public {
-        distributeBorrowerStrike(sToken, borrower, Exp({mantissa: marketBorrowIndexMantissa}), false);
+        distributeBorrowerStrike(sToken, borrower, Exp({mantissa: marketBorrowIndexMantissa}));
     }
 
     function harnessDistributeSupplierStrike(address sToken, address supplier) public {
-        distributeSupplierStrike(sToken, supplier, false);
+        distributeSupplierStrike(sToken, supplier);
     }
 
     function harnessTransferStrike(address user, uint userAccrued, uint threshold) public returns (uint) {
-        return transferStrike(user, userAccrued, threshold);
+        if (userAccrued > 0 && userAccrued >= threshold) {
+            return transferStrike(user, userAccrued, threshold);
+        }
+        return userAccrued;
+    }
+
+    function harnessAddStrikeMarkets(address[] memory sTokens) public {
+        for (uint i = 0; i < sTokens.length; i++) {
+            setStrikeSpeedInternal(SToken(sTokens[i]), 1);
+        }
     }
 
     function harnessFastForward(uint blocks) public returns (uint) {
@@ -96,7 +147,7 @@ contract ComptrollerHarness is Comptroller {
         uint m = allMarkets.length;
         uint n = 0;
         for (uint i = 0; i < m; i++) {
-            if (markets[address(allMarkets[i])].isStriked) {
+            if (strikeSpeeds[address(allMarkets[i])] > 0) {
                 n++;
             }
         }
@@ -104,7 +155,7 @@ contract ComptrollerHarness is Comptroller {
         address[] memory strikeMarkets = new address[](n);
         uint k = 0;
         for (uint i = 0; i < m; i++) {
-            if (markets[address(allMarkets[i])].isStriked) {
+            if (strikeSpeeds[address(allMarkets[i])] > 0) {
                 strikeMarkets[k++] = address(allMarkets[i]);
             }
         }

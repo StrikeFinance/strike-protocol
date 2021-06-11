@@ -1,0 +1,80 @@
+-- Tests for the grants and math patch
+
+Macro StrikeSpeedComptroller price=1.0 borrowRate=0.000005 strikeInitAmount=5000000e18
+    Unitroller Deploy
+    PriceOracle Deploy Fixed price
+    PriceOracleProxy Deploy Admin (PriceOracle Address) (Address Zero) (Address Zero) (Address Zero) (Address Zero) (Address Zero)
+    -- g2
+    ComptrollerImpl Deploy ScenarioG2 ComptrollerScenG2
+    Unitroller SetPendingImpl ComptrollerScenG2
+    ComptrollerImpl ComptrollerScenG2 BecomeG2
+    -- list some tokens
+    Comptroller SetPriceOracle (PriceOracleProxy Address)
+    Comptroller SetMaxAssets 20
+    Comptroller SetCloseFactor 0.5
+    Comptroller LiquidationIncentive 1.1
+    -- Comptroller SetStrikeRate 1e18
+    NewSToken ZRX sZRX
+    NewSToken BAT sBAT
+    Support sZRX collateralFactor:0.5
+    Support sBAT collateralFactor:0.5
+    -- g3
+    ComptrollerImpl Deploy ScenarioG3 ComptrollerScen
+    Unitroller SetPendingImpl ComptrollerScen
+    ComptrollerImpl ComptrollerScen BecomeG3 1e18 [sZRX sBAT]
+    Erc20 Deploy Standard STRK "STRK Token" 18
+    Give (Address Comptroller) strikeInitAmount STRK
+    Comptroller Send "setSTRKAddress(address)" (Address STRK)
+    -- current
+    ComptrollerImpl Deploy Scenario ComptrollerScen
+    Unitroller SetPendingImpl ComptrollerScen
+    ComptrollerImpl ComptrollerScen Become
+
+Macro InitSpeeds
+    Prep Geoff 100e18 ZRX sZRX
+    Mint Geoff 50e18 sZRX--tokenbalance = 50e18 / 2e9 = 2.5e10
+    Prep Coburn Some BAT sBAT
+    Mint Coburn 6e18 sBAT--tokenbalance = 6e18 / 2e9 = 3e9
+    EnterMarkets Coburn sBAT
+    Borrow Coburn 1e18 sZRX
+    Comptroller SetStrikeSpeed sZRX 1
+    Comptroller SetStrikeSpeed sBAT 1
+    -- Comptroller RefreshStrikeSpeeds
+    -- Comptroller Send "setSTRKAddress(address)" (Address STRK)
+
+Test "STRK speed can be set per market"
+    StrikeSpeedComptroller
+    InitSpeeds
+    -- Baseline STRK amounts
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 0
+    -- Reset the Strike speed
+    Comptroller SetStrikeSpeed sZRX 2
+    FastForward 1000 Blocks
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 2000
+    -- Change the Strike speed
+    Comptroller SetStrikeSpeed sZRX 4
+    FastForward 1000 Blocks
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 6000
+    -- Remove the Strike speed
+    Comptroller SetStrikeSpeed sZRX 0
+    FastForward 1000 Blocks
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 6000
+
+Test "STRK is not claimed automatically"
+    StrikeSpeedComptroller
+    InitSpeeds
+    Comptroller SetStrikeSpeed sZRX 2
+    FastForward 100000 Blocks
+    -- Check STRK is not claimed automatically
+    Mint Geoff 50e18 sZRX
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 0
+    -- Confirm there was STRK to claim
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 200000
