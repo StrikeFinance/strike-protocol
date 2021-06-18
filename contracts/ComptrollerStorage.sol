@@ -127,3 +127,11 @@ contract ComptrollerV3Storage is ComptrollerV2Storage {
     /// @notice The STRK accrued but not yet transferred to each user
     mapping(address => uint) public strikeAccrued;
 }
+
+contract ComptrollerV4Storage is ComptrollerV3Storage {
+    /// @notice The portion of STRK that each constributor receives per block
+    mapping(address => uint) public strikeContributorSpeeds;
+
+    /// @notice Last block at which a contributor's STRK rewards have been allocated
+    mapping(address => uint) public lastContributorBlock;
+}

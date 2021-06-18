@@ -57,6 +57,9 @@ interface ComptrollerMethods {
   strikeBorrowerIndex(market: string, account: string): Callable<string>
   strikeSpeeds(string): Callable<string>
   claimStrike(string): Sendable<void>
+  updateContributorRewards(account: string): Sendable<void>
+  _setContributorStrikeSpeed(account: string, encodedNumber): Sendable<void>
+  _grantSTRK(account: string, encodedNumber): Sendable<void>
   _setStrikeRate(encodedNumber): Sendable<void>
   _setStrikeSpeed(sToken: string, encodedNumber): Sendable<void>
 }

@@ -19,16 +19,16 @@ Macro StrikeSpeedComptroller price=1.0 borrowRate=0.000005 strikeInitAmount=5000
     Support sZRX collateralFactor:0.5
     Support sBAT collateralFactor:0.5
     -- g3
-    ComptrollerImpl Deploy ScenarioG3 ComptrollerScen
-    Unitroller SetPendingImpl ComptrollerScen
-    ComptrollerImpl ComptrollerScen BecomeG3 1e18 [sZRX sBAT]
+    ComptrollerImpl Deploy ScenarioG3 ComptrollerScenG3
+    Unitroller SetPendingImpl ComptrollerScenG3
+    ComptrollerImpl ComptrollerScenG3 BecomeG3 1e18 [sZRX sBAT]
     Erc20 Deploy Standard STRK "STRK Token" 18
     Give (Address Comptroller) strikeInitAmount STRK
-    Comptroller Send "setSTRKAddress(address)" (Address STRK)
     -- current
     ComptrollerImpl Deploy Scenario ComptrollerScen
     Unitroller SetPendingImpl ComptrollerScen
     ComptrollerImpl ComptrollerScen Become
+    Comptroller Send "setSTRKAddress(address)" (Address STRK)
 
 Macro InitSpeeds
     Prep Geoff 100e18 ZRX sZRX
@@ -48,6 +48,7 @@ Test "STRK speed can be set per market"
     -- Baseline STRK amounts
     Assert Equal (Comptroller StrikeAccrued Geoff) 0
     Assert Equal (Erc20 STRK TokenBalance Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance (Address Comptroller)) 5000000e18
     -- Reset the Strike speed
     Comptroller SetStrikeSpeed sZRX 2
     FastForward 1000 Blocks

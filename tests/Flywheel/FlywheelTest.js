@@ -753,4 +753,86 @@ describe('Flywheel', () => {
       expect(borrowState.index).toEqual(idx.toString());
     });
   });
+
+  describe('Grant STRK', () => {
+    beforeEach(async () => {
+      await send(comptroller.strk, 'transfer', [comptroller._address, etherUnsigned(50e18)], { from: root });
+    });
+
+    it('should award strk if called by admin', async() => {
+      const tx = await send(comptroller, '_grantSTRK', [a1, 100]);
+      expect(tx).toHaveLog('StrikeGranted', {
+        recipient: a1,
+        amount: 100
+      });
+    });
+
+    it('should revert if not called by admin', async() => {
+      await expect(
+        send(comptroller, '_grantSTRK', [a1, 100], { from: a1 })
+      ).rejects.toRevert('revert Only Admin can grant STRK');
+    });
+
+    it('should revert if insufficient strk', async() => {
+      await expect(
+        send(comptroller, '_grantSTRK', [a1, etherUnsigned(1e20)])
+      ).rejects.toRevert('revert Insufficient STRK for grant');
+    });
+  });
+
+  describe('updateContributorRewards', () => {
+    it ('should not fail when contributor rewards called on non-contributor', async() => {
+      const tx1 = await send(comptroller, 'updateContributorRewards', [a1]);
+    });
+
+    it ('should accrue strk to contributors', async() => {
+      const tx1 = await send(comptroller, '_setContributorStrikeSpeed', [a1, 2000]);
+      await fastForward(comptroller, 50);
+
+      const a1Accrued = await strikeAccrued(comptroller, a1);
+      expect(a1Accrued).toEqualNumber(0);
+
+      const tx2 = await send(comptroller, 'updateContributorRewards', [a1], { from: a1 });
+      const a1Accrued2 = await strikeAccrued(comptroller, a1);
+      expect(a1Accrued2).toEqualNumber(50 * 2000);
+    });
+
+    it ('should accrue strk with last set', async() => {
+      await fastForward(comptroller, 1000);
+      const tx1 = await send(comptroller, '_setContributorStrikeSpeed', [a1, 2000]);
+      await fastForward(comptroller, 50);
+
+      const tx2 = await send(comptroller, 'updateContributorRewards', [a1], { from: a1 });
+      const a1Accrued2 = await strikeAccrued(comptroller, a1);
+      expect(a1Accrued2).toEqualNumber(50 * 2000);
+    });
+  });
+
+  describe('_setContributorStrikeSpeed', () => {
+    it ('should revert if not called by admin', async() => {
+      await expect(
+        send(comptroller, '_setContributorStrikeSpeed', [a1, 1000], { from: a1 })
+      ).rejects.toRevert('revert Only Admin can set STRK speed');
+    });
+
+    it ('should start strk stream if called by admin', async() => {
+      const tx = await send(comptroller, '_setContributorStrikeSpeed', [a1, 1000]);
+      expect(tx).toHaveLog('ContributorStrikeSpeedUpdated', {
+        contributor: a1,
+        newStrikeSpeed: 1000
+      });
+    });
+
+    it ('should reset strk stream if set to 0', async () => {
+      const tx1 = await send(comptroller, '_setContributorStrikeSpeed', [a1, 2000]);
+      await fastForward(comptroller, 50);
+
+      const tx2 = await send(comptroller, '_setContributorStrikeSpeed', [a1, 0]);
+      await fastForward(comptroller, 50);
+
+      const tx3 = await send(comptroller, 'updateContributorRewards', [a1], { from: a1 });
+      const a1Accrued = await strikeAccrued(comptroller, a1);
+      expect(a1Accrued).toEqualNumber(50 * 2000);
+    });
+  });
 });

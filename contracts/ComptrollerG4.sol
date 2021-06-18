@@ -13,7 +13,7 @@ import "./Governance/STRK.sol";
  * @title Strike's Comptroller Contract
  * @author Strike
  */
-contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerErrorReporter, Exponential {
+contract ComptrollerG4 is ComptrollerV4Storage, ComptrollerInterface, ComptrollerErrorReporter, Exponential {
     /// @notice Emitted when an admin supports a market
     event MarketListed(SToken sToken);
 
@@ -61,12 +61,6 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
 
     /// @notice Emitted when STRK is distributed to a borrower
     event DistributedBorrowerStrike(SToken indexed sToken, address indexed borrower, uint strikeDelta, uint strikeBorrowIndex);
-
-    /// @notice Emitted when new Strike speed is set
-    event ContributorStrikeSpeedUpdated(address indexed contributor, uint newStrikeSpeed);
-
-    /// @notice Emitted when Strike is granted
-    event StrikeGranted(address recipient, uint amount);
 
     /// @notice The threshold above which the flywheel transfers STRK, in wei
     uint public constant strikeClaimThreshold = 0.001e18;
@@ -1323,62 +1317,6 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
     }
 
     /*** STRK Distribution Admin ***/
-
-    /**
-     * @notice Update additional accrued Strike for a contributor
-     * @param contributor The address to calculate contributor rewards
-     */
-    function updateContributorRewards(address contributor) public {
-        uint strikeSpeed = strikeContributorSpeeds[contributor];
-        uint blockNumber = getBlockNumber();
-        uint deltaBlocks = sub_(blockNumber, lastContributorBlock[contributor]);
-
-        if (deltaBlocks > 0 && strikeSpeed > 0) {
-            uint newAccrued = mul_(deltaBlocks, strikeSpeed);
-            uint contributorAccrued = add_(strikeAccrued[contributor], newAccrued);
-
-            strikeAccrued[contributor] = contributorAccrued;
-            lastContributorBlock[contributor] = blockNumber;
-        }
-    }
-
-    /**
-     * @notice Set Strike speed for a single contributor
-     * @param contributor The contributor whose Strike speed to set
-     * @param strikeSpeed New Strike speed for contributor
-     */
-    function _setContributorStrikeSpeed(address contributor, uint strikeSpeed) public {
-        require(adminOrInitializing(), "Only Admin can set STRK speed");
-
-        // Update contributor STRK reward before update speed
-        updateContributorRewards(contributor);
-
-        if (strikeSpeed == 0) {
-            // release storage
-            delete lastContributorBlock[contributor];
-        }
-
-        // Update last block
-        lastContributorBlock[contributor] = getBlockNumber();
-        // Update STRK speed
-        strikeContributorSpeeds[contributor] = strikeSpeed;
-
-        emit ContributorStrikeSpeedUpdated(contributor, strikeSpeed);
-    }
-
-    /**
-     * @notice Transfer STRK to the recipient
-     * @param recipient The address of the receipient to transfer STRK to
-     * @param amount The amount of STRK to (possibly) transfer
-     */
-    function _grantSTRK(address recipient, uint amount) public {
-        require(adminOrInitializing(), "Only Admin can grant STRK");
-
-        uint amountLeft = grantSTRKInternal(recipient, amount);
-        require(amountLeft == 0, "Insufficient STRK for grant");
-
-        emit StrikeGranted(recipient, amount);
-    }
 
     /**
      * @notice Set the amount of STRK distributed per block
