@@ -36,7 +36,7 @@ Macro NewComptroller price=1.0 closeFactor=0.1 maxAssets=20
     --g4
     ComptrollerImpl Deploy ScenarioG4 ComptrollerG4
     Unitroller SetPendingImpl ComptrollerG4
-    ComptrollerImpl ComptrollerG4 BecomeG4 1e18 []
+    ComptrollerImpl ComptrollerG4 BecomeG4
     --current
     ComptrollerImpl Deploy Scenario ScenComptroller
     Unitroller SetPendingImpl ScenComptroller
