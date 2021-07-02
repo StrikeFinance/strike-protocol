@@ -260,6 +260,42 @@ async function claimStrike(world: World, from: string, comptroller: Comptroller,
   return world;
 }
 
+async function updateContributorRewards(world: World, from: string, comptroller: Comptroller, contributor: string): Promise<World> {
+  let invokation = await invoke(world, comptroller.methods.updateContributorRewards(contributor), from, ComptrollerErrorReporter);
+
+  world = addAction(
+    world,
+    `Contributor rewards updated for ${contributor}`,
+    invokation
+  );
+
+  return world;
+}
+
+async function grantSTRK(world: World, from: string, comptroller: Comptroller, recipient: string, amount: NumberV): Promise<World> {
+  let invokation = await invoke(world, comptroller.methods._grantSTRK(recipient, amount.encode()), from, ComptrollerErrorReporter);
+
+  world = addAction(
+    world,
+    `${amount.show()} strk granted to ${recipient}`,
+    invokation
+  );
+
+  return world;
+}
+
+async function setContributorStrikeSpeed(world: World, from: string, comptroller: Comptroller, contributor: string, strikeSpeed: NumberV): Promise<World> {
+  let invokation = await invoke(world, comptroller.methods._setContributorStrikeSpeed(contributor, strikeSpeed.encode()), from, ComptrollerErrorReporter);
+
+  world = addAction(
+    world,
+    `Set Contributor Strike Speed for ${contributor} as ${strikeSpeed.show()}`,
+    invokation
+  );
+
+  return world;
+}
+
 async function setStrikeRate(world: World, from: string, comptroller: Comptroller, rate: NumberV): Promise<World> {
   let invokation = await invoke(world, comptroller.methods._setStrikeRate(rate.encode()), from, ComptrollerErrorReporter);
 
@@ -689,8 +725,8 @@ export function comptrollerCommands() {
       ],
       (world, from, { comptroller, sToken, speed }) => setStrikeSpeed(world, from, comptroller, sToken, speed)
     ),
-
-      new Command<{comptroller: Comptroller, holder: AddressV}>(`
+    
+    new Command<{comptroller: Comptroller, holder: AddressV}>(`
       #### ClaimStrike
 
       * "Comptroller ClaimStrike <holder>" - Claims strk
@@ -703,6 +739,48 @@ export function comptrollerCommands() {
       ],
       (world, from, {comptroller, holder}) => claimStrike(world, from, comptroller, holder.val)
     ),
+    
+    new Command<{comptroller: Comptroller, contributor: AddressV}>(`
+      #### UpdateContributorRewards
+      * "Comptroller UpdateContributorRewards <contributor>" - Updates rewards for a contributor
+      * E.g. "Comptroller UpdateContributorRewards Geoff
+      `,
+      "UpdateContributorRewards",
+      [
+        new Arg("comptroller", getComptroller, { implicit: true }),
+        new Arg("contributor", getAddressV)
+      ],
+      (world, from, { comptroller, contributor }) => updateContributorRewards(world, from, comptroller, contributor.val)
+    ),
+
+    new Command<{comptroller: Comptroller, recipient: AddressV, amount: NumberV}>(`
+      #### GrantSTRK
+      * "Comptroller GrantSTRK <recipient> <amount>" - Grant STRK to a recipient
+      * E.g. "Comptroller GrantSTRK Geoff 1e18
+      `,
+      "GrantSTRK",
+      [
+        new Arg("comptroller", getComptroller, { implicit: true }),
+        new Arg("recipient", getAddressV),
+        new Arg("amount", getNumberV)
+      ],
+      (world, from, { comptroller, recipient, amount }) => grantSTRK(world, from, comptroller, recipient.val, amount)
+    ),
+
+    new Command<{comptroller: Comptroller, contributor: AddressV, strikeSpeed: NumberV}>(`
+      #### SetContributorStrikeSpeed
+      * "Comptroller SetContributorStrikeSpeed <contributor> <strikeSpeed>" - Set Contributor Strike Speed
+      * E.g. "Comptroller SetContributorStrikeSpeed Geoff 1e18
+      `,
+      "SetContributorStrikeSpeed",
+      [
+        new Arg("comptroller", getComptroller, { implicit: true }),
+        new Arg("contributor", getAddressV),
+        new Arg("strikeSpeed", getNumberV)
+      ],
+      (world, from, { comptroller, contributor, strikeSpeed }) => setContributorStrikeSpeed(world, from, comptroller, contributor.val, strikeSpeed)
+    ),
+
     new Command<{comptroller: Comptroller, rate: NumberV}>(`
       #### SetStrikeRate
 
