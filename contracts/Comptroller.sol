@@ -1138,7 +1138,7 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
                     index: strikeInitialIndex,
                     block: safe32(getBlockNumber(), "block number exceeds 32 bits")
                 });
-            }            
+            }
         }
 
         if (currentStrikeSpeed != strikeSpeed) {
