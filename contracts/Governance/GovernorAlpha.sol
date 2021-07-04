@@ -6,7 +6,7 @@ contract GovernorAlpha {
     string public constant name = "Strike Governor Alpha";
 
     /// @notice The number of votes in support of a proposal required in order for a quorum to be reached and for a vote to succeed
-    function quorumVotes() public pure returns (uint) { return 260753e18; } // 260753 = 4% of STRK
+    function quorumVotes() public pure returns (uint) { return 130000e18; } // 130000 = 2% of STRK
 
     /// @notice The number of votes required in order for a voter to become a proposer
     function proposalThreshold() public pure returns (uint) { return 65188e18; } // 65188 = 1% of STRK
