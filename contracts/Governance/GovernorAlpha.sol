@@ -12,7 +12,7 @@ contract GovernorAlpha {
     function proposalThreshold() public pure returns (uint) { return 65188e18; } // 65188 = 1% of STRK
 
     /// @notice The maximum number of actions that can be included in a proposal
-    function proposalMaxOperations() public pure returns (uint) { return 10; } // 10 actions
+    function proposalMaxOperations() public pure returns (uint) { return 50; } // 50 actions
 
     /// @notice The delay before voting on a proposal may take place, once proposed
     function votingDelay() public pure returns (uint) { return 1; } // 1 block
