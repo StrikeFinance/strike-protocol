@@ -153,6 +153,26 @@ async function makeSToken(opts = {}) {
       sToken = await saddle.getContractAt('SDaiDelegateHarness', sDelegator._address); // XXXS at
       break;
 
+    case 'sstrk':
+      underlying = await deploy('STRK', [opts.compHolder || root]);
+      sDelegatee = await deploy('SStrkLikeDelegate');
+      sDelegator = await deploy('SErc20Delegator',
+        [
+          underlying._address,
+          comptroller._address,
+          interestRateModel._address,
+          exchangeRate,
+          name,
+          symbol,
+          decimals,
+          admin,
+          sDelegatee._address,
+          "0x0"
+        ]
+      );
+      sToken = await saddle.getContractAt('SStrkLikeDelegate', sDelegator._address);
+      break;
+
     case 'serc20':
     default:
       underlying = opts.underlying || await makeToken(opts.underlyingOpts);
