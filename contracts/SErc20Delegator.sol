@@ -397,7 +397,7 @@ contract SErc20Delegator is STokenInterface, SErc20Interface, SDelegatorInterfac
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function _setInterestRateModel(InterestRateModel newInterestRateModel) public returns (uint) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("_setInterestRateModel(uint256)", newInterestRateModel));
+        bytes memory data = delegateToImplementation(abi.encodeWithSignature("_setInterestRateModel(address)", newInterestRateModel));
         return abi.decode(data, (uint));
     }
 
