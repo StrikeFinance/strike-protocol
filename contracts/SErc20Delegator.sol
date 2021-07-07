@@ -85,7 +85,7 @@ contract SErc20Delegator is STokenInterface, SErc20Interface, SDelegatorInterfac
 
     /**
      * @notice Sender redeems sTokens in exchange for the underlying asset
-     * @dev Accrues interest whether or not the operation succeeds, unless reverted
+     * @dev Accrues interest whether or not the operation succeeds, unless reverted`
      * @param redeemTokens The number of sTokens to redeem into underlying
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
@@ -213,7 +213,7 @@ contract SErc20Delegator is STokenInterface, SErc20Interface, SDelegatorInterfac
      * @return The amount of underlying owned by `owner`
      */
     function balanceOfUnderlying(address owner) external returns (uint) {
-        bytes memory data = delegateToViewImplementation(abi.encodeWithSignature("balanceOfUnderlying(address)", owner));
+        bytes memory data = delegateToImplementation(abi.encodeWithSignature("balanceOfUnderlying(address)", owner));
         return abi.decode(data, (uint));
     }
 
@@ -261,7 +261,7 @@ contract SErc20Delegator is STokenInterface, SErc20Interface, SDelegatorInterfac
      * @return The calculated balance
      */
     function borrowBalanceCurrent(address account) external returns (uint) {
-        bytes memory data = delegateToViewImplementation(abi.encodeWithSignature("borrowBalanceCurrent(address)", account));
+        bytes memory data = delegateToImplementation(abi.encodeWithSignature("borrowBalanceCurrent(address)", account));
         return abi.decode(data, (uint));
     }
 
@@ -280,7 +280,7 @@ contract SErc20Delegator is STokenInterface, SErc20Interface, SDelegatorInterfac
      * @return Calculated exchange rate scaled by 1e18
      */
     function exchangeRateCurrent() public returns (uint) {
-        bytes memory data = delegateToViewImplementation(abi.encodeWithSignature("exchangeRateCurrent()"));
+        bytes memory data = delegateToImplementation(abi.encodeWithSignature("exchangeRateCurrent()"));
         return abi.decode(data, (uint));
     }
 
@@ -309,7 +309,7 @@ contract SErc20Delegator is STokenInterface, SErc20Interface, SDelegatorInterfac
       *      up to the current block and writes new checkpoint to storage.
       */
     function accrueInterest() public returns (uint) {
-        bytes memory data = delegateToViewImplementation(abi.encodeWithSignature("accrueInterest()"));
+        bytes memory data = delegateToImplementation(abi.encodeWithSignature("accrueInterest()"));
         return abi.decode(data, (uint));
     }
 
@@ -323,7 +323,7 @@ contract SErc20Delegator is STokenInterface, SErc20Interface, SDelegatorInterfac
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function seize(address liquidator, address borrower, uint seizeTokens) external returns (uint) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("size(address,address,uint256)", liquidator, borrower, seizeTokens));
+        bytes memory data = delegateToImplementation(abi.encodeWithSignature("seize(address,address,uint256)", liquidator, borrower, seizeTokens));
         return abi.decode(data, (uint));
     }
 
