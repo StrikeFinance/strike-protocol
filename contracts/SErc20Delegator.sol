@@ -251,7 +251,7 @@ contract SErc20Delegator is STokenInterface, SErc20Interface, SDelegatorInterfac
      * @return The total borrows with interest
      */
     function totalBorrowsCurrent() external returns (uint) {
-        bytes memory data = delegateToViewImplementation(abi.encodeWithSignature("totalBorrowsCurrent()"));
+        bytes memory data = delegateToImplementation(abi.encodeWithSignature("totalBorrowsCurrent()"));
         return abi.decode(data, (uint));
     }
 
