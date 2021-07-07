@@ -87,7 +87,6 @@ describe('Flywheel', () => {
     sREP = await makeSToken({comptroller, supportMarket: true, underlyingPrice: 2, interestRateModelOpts});
     sZRX = await makeSToken({comptroller, supportMarket: true, underlyingPrice: 3, interestRateModelOpts});
     cEVIL = await makeSToken({comptroller, supportMarket: false, underlyingPrice: 3, interestRateModelOpts});
-    await send(comptroller, '_addStrikeMarkets', [[sLOW, sREP, sZRX].map(c => c._address)]);
   });
 
   describe('getStrikeMarkets()', () => {
@@ -166,9 +165,9 @@ describe('Flywheel', () => {
   describe('updateStrikeBorrowIndex()', () => {
     it('should calculate strk borrower index correctly', async () => {
       const mkt = sREP;
-      await send(comptroller, 'setBlockNumber', [100]);
-      await send(mkt, 'harnessSetTotalBorrows', [etherUnsigned(11e18)]);
       await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await send(comptroller, 'setBlockNumber', [100]);
+      await send(mkt, 'harnessSetTotalBorrows', [etherUnsigned(11e18)]);      
       await send(comptroller, 'harnessUpdateStrikeBorrowIndex', [
         mkt._address,
         etherExp(1.1),
@@ -223,8 +222,9 @@ describe('Flywheel', () => {
 
     it('should not update index if strk speed is 0', async () => {
       const mkt = sREP;
-      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0)]);
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
       await send(comptroller, 'setBlockNumber', [100]);
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0)]);
       await send(comptroller, 'harnessUpdateStrikeBorrowIndex', [
         mkt._address,
         etherExp(1.1),
@@ -239,9 +239,9 @@ describe('Flywheel', () => {
   describe('updateStrikeSupplyIndex()', () => {
     it('should calculate strk supplier index correctly', async () => {
       const mkt = sREP;
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
       await send(comptroller, 'setBlockNumber', [100]);
       await send(mkt, 'harnessSetTotalSupply', [etherUnsigned(10e18)]);
-      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
       await send(comptroller, 'harnessUpdateStrikeSupplyIndex', [mkt._address]);
       /*
         suppyTokens = 10e18
@@ -719,7 +719,7 @@ describe('Flywheel', () => {
     });
   });
 
-  describe('_addStrikeMarkets', () => {
+  /* describe('_addStrikeMarkets', () => {
     it('should correctly add a strike market if called by admin', async () => {
       const sBAT = await makeSToken({comptroller, supportMarket: true});
       const tx1 = await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address, sREP._address, sZRX._address]]);
@@ -752,7 +752,7 @@ describe('Flywheel', () => {
       expect(borrowState.block).toEqual(bn1.toString());
       expect(borrowState.index).toEqual(idx.toString());
     });
-  });
+  }); */
 
   describe('Grant STRK', () => {
     beforeEach(async () => {
