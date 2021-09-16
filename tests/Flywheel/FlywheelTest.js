@@ -87,7 +87,6 @@ describe('Flywheel', () => {
     sREP = await makeSToken({comptroller, supportMarket: true, underlyingPrice: 2, interestRateModelOpts});
     sZRX = await makeSToken({comptroller, supportMarket: true, underlyingPrice: 3, interestRateModelOpts});
     cEVIL = await makeSToken({comptroller, supportMarket: false, underlyingPrice: 3, interestRateModelOpts});
-    await send(comptroller, '_addStrikeMarkets', [[sLOW, sREP, sZRX].map(c => c._address)]);
   });
 
   describe('getStrikeMarkets()', () => {
@@ -166,9 +165,9 @@ describe('Flywheel', () => {
   describe('updateStrikeBorrowIndex()', () => {
     it('should calculate strk borrower index correctly', async () => {
       const mkt = sREP;
-      await send(comptroller, 'setBlockNumber', [100]);
-      await send(mkt, 'harnessSetTotalBorrows', [etherUnsigned(11e18)]);
       await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await send(comptroller, 'setBlockNumber', [100]);
+      await send(mkt, 'harnessSetTotalBorrows', [etherUnsigned(11e18)]);      
       await send(comptroller, 'harnessUpdateStrikeBorrowIndex', [
         mkt._address,
         etherExp(1.1),
@@ -223,8 +222,9 @@ describe('Flywheel', () => {
 
     it('should not update index if strk speed is 0', async () => {
       const mkt = sREP;
-      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0)]);
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
       await send(comptroller, 'setBlockNumber', [100]);
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0)]);
       await send(comptroller, 'harnessUpdateStrikeBorrowIndex', [
         mkt._address,
         etherExp(1.1),
@@ -239,9 +239,9 @@ describe('Flywheel', () => {
   describe('updateStrikeSupplyIndex()', () => {
     it('should calculate strk supplier index correctly', async () => {
       const mkt = sREP;
+      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
       await send(comptroller, 'setBlockNumber', [100]);
       await send(mkt, 'harnessSetTotalSupply', [etherUnsigned(10e18)]);
-      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
       await send(comptroller, 'harnessUpdateStrikeSupplyIndex', [mkt._address]);
       /*
         suppyTokens = 10e18
@@ -716,41 +716,6 @@ describe('Flywheel', () => {
       expect(speed1).toEqualNumber(strikeRate.div(4));
       expect(speed2).toEqualNumber(0);
       expect(speed3).toEqualNumber(strikeRate.div(4).mul(3));
-    });
-  });
-
-  describe('_addStrikeMarkets', () => {
-    it('should correctly add a strike market if called by admin', async () => {
-      const sBAT = await makeSToken({comptroller, supportMarket: true});
-      const tx1 = await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address, sREP._address, sZRX._address]]);
-      const tx2 = await send(comptroller, 'harnessAddStrikeMarkets', [[sBAT._address]]);
-      const markets = await call(comptroller, 'getStrikeMarkets');
-      expect(markets).toEqual([sLOW, sREP, sZRX, sBAT].map((c) => c._address));
-      expect(tx2).toHaveLog('StrikeSpeedUpdated', {
-        sToken: sBAT._address,
-        newSpeed: 1
-      });
-    });
-
-    it('should not write over a markets existing state', async () => {
-      const mkt = sLOW._address;
-      const bn0 = 10, bn1 = 20;
-      const idx = etherUnsigned(1.5e36);
-
-      await send(comptroller, "harnessAddStrikeMarkets", [[mkt]]);
-      await send(comptroller, "setStrikeSupplyState", [mkt, idx, bn0]);
-      await send(comptroller, "setStrikeBorrowState", [mkt, idx, bn0]);
-      await send(comptroller, "setBlockNumber", [bn1]);
-      await send(comptroller, "_setStrikeSpeed", [mkt, 0]);
-      await send(comptroller, "harnessAddStrikeMarkets", [[mkt]]);
-
-      const supplyState = await call(comptroller, 'strikeSupplyState', [mkt]);
-      expect(supplyState.block).toEqual(bn1.toString());
-      expect(supplyState.index).toEqual(idx.toString());
-
-      const borrowState = await call(comptroller, 'strikeBorrowState', [mkt]);
-      expect(borrowState.block).toEqual(bn1.toString());
-      expect(borrowState.index).toEqual(idx.toString());
     });
   });
 

@@ -1395,43 +1395,6 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
     }
 
     /**
-     * @notice Add markets to strikeMarkets, allowing them to earn STRK in the flywheel
-     * @param sTokens The addresses of the markets to add
-     */
-    function _addStrikeMarkets(address[] memory sTokens) public {
-        require(adminOrInitializing(), "only admin can add strike market");
-
-        for (uint i = 0; i < sTokens.length; i++) {
-            _addStrikeMarketInternal(sTokens[i]);
-        }
-
-        // refreshStrikeSpeedsInternal();
-    }
-
-    function _addStrikeMarketInternal(address sToken) internal {
-        Market storage market = markets[sToken];
-        require(market.isListed == true, "strike market is not listed");
-        require(market.isStriked == false, "strike market already added");
-
-        market.isStriked = true;
-        emit MarketStriked(SToken(sToken), true);
-
-        if (strikeSupplyState[sToken].index == 0 && strikeSupplyState[sToken].block == 0) {
-            strikeSupplyState[sToken] = StrikeMarketState({
-                index: strikeInitialIndex,
-                block: safe32(getBlockNumber(), "block number exceeds 32 bits")
-            });
-        }
-
-        if (strikeBorrowState[sToken].index == 0 && strikeBorrowState[sToken].block == 0) {
-            strikeBorrowState[sToken] = StrikeMarketState({
-                index: strikeInitialIndex,
-                block: safe32(getBlockNumber(), "block number exceeds 32 bits")
-            });
-        }
-    }
-
-    /**
      * @notice Remove a market from strikeMarkets, preventing it from earning STRK in the flywheel
      * @param sToken The address of the market to drop
      */

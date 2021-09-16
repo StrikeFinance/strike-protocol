@@ -2,7 +2,7 @@
 Macro DeployGov
     STRK Deploy Bank
     Timelock Deploy Jared 604800
-    Governor Deploy Alpha LegitGov (Address Timelock) (Address STRK) Guardian
+    Governor Deploy AlphaHarness LegitGov (Address Timelock) (Address STRK) Guardian
     Timelock SetAdmin (Address LegitGov)
     Enfranchise Root 100001e18
 
@@ -20,13 +20,13 @@ Test "Propose 💍 [1 Action]"
     Assert Log ProposalCreated (values [1])
     Assert Log ProposalCreated (signatures ["increment(uint256)"])
     Assert Log ProposalCreated (startBlock 9)
-    Assert Log ProposalCreated (endBlock 17289)
+    Assert Log ProposalCreated (endBlock 249)
     Assert Log ProposalCreated (calldatas ["0x0000000000000000000000000000000000000000000000000000000000000005"])
     Assert Log ProposalCreated (proposer (Address Root))
     Assert Equal (Governor LegitGov Proposal LastProposal Id) 1
     Assert Equal (Governor LegitGov Proposal LastProposal Proposer) (Address Root)
     Assert Equal (Governor LegitGov Proposal LastProposal StartBlock) 9
-    Assert Equal (Governor LegitGov Proposal LastProposal EndBlock) 17289
+    Assert Equal (Governor LegitGov Proposal LastProposal EndBlock) 249
     Assert Equal (Governor LegitGov Proposal LastProposal ForVotes) 0
     Assert Equal (Governor LegitGov Proposal LastProposal AgainstVotes) 0
     Assert Equal (Governor LegitGov Proposal LastProposal Eta) 0
