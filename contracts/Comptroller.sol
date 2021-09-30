@@ -1428,6 +1428,6 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
      * @return The address of STRK
      */
     function getSTRKAddress() public view returns (address) {
-        return 0xF88B9A65e3505f032822e5Ea7108361150039064;
+        return 0x74232704659ef37c08995e386A2E26cc27a8d7B1;
     }
 }
