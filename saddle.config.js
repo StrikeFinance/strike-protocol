@@ -83,7 +83,7 @@ module.exports = {
     ropsten: {
       providers: [
         {env: "PROVIDER"},
-        {file: "~/.ethereum/ropsten-url"},                    // Load from given file with contents as the URL (e.g. https://infura.io/api-key)
+        {http: "https://ropsten.infura.io/v3/81700f75a3194c1db73018d14890902b"},                    // Load from given file with contents as the URL (e.g. https://infura.io/api-key)
       ],
       web3: {
         gas: [
@@ -101,14 +101,40 @@ module.exports = {
       },
       accounts: [
         {env: "ACCOUNT"},
-        {file: "~/.ethereum/ropsten"}                         // Load from given file with contents as the private key (e.g. 0x...)
+        {file: "./.ethereum/ropsten"}                         // Load from given file with contents as the private key (e.g. 0x...)
       ]
     },
+
+    rinkeby: {
+      providers: [
+        {env: "PROVIDER"},
+        {http: "https://rinkeby.infura.io/v3/81700f75a3194c1db73018d14890902b"},                    // Load from given file with contents as the URL (e.g. https://infura.io/api-key)
+      ],
+      web3: {
+        gas: [
+          {env: "GAS"},
+          {default: "6700000"}
+        ],
+        gas_price: [
+          {env: "GAS_PRICE"},
+          {default: "12000000000"}
+        ],
+        options: {
+          transactionConfirmationBlocks: 1,
+          transactionBlockTimeout: 5
+        }
+      },
+      accounts: [
+        {env: "ACCOUNT"},
+        {file: "./.ethereum/rinkeby"}                         // Load from given file with contents as the private key (e.g. 0x...)
+      ]
+    },
+
     mainnet: {
       providers: [
         {env: "PROVIDER"},
-        {file: "~/.ethereum/mainnet-url"},                    // Load from given file with contents as the URL (e.g. https://infura.io/api-key)
-        {http: "https://mainnet-eth.strike.finance"}
+        {file: "./.ethereum/mainnet-url"},                    // Load from given file with contents as the URL (e.g. https://infura.io/api-key)
+        // {http: "https://mainnet-eth.strike.finance"}
       ],
       web3: {
         gas: [
@@ -126,8 +152,8 @@ module.exports = {
       },
       accounts: [
         {env: "ACCOUNT"},
-        {file: `~/.ethereum/mainnet-${process.env['KEY']}`},
-        {file: "~/.ethereum/mainnet"}                        // Load from given file with contents as the private key (e.g. 0x...)
+        // {file: `~/.ethereum/mainnet-${process.env['KEY']}`},
+        {file: "./.ethereum/mainnet"}                        // Load from given file with contents as the private key (e.g. 0x...)
       ]
     },
   },
@@ -160,6 +186,7 @@ module.exports = {
   },
   scripts: {
     'token:deploy': "script/saddle/deployToken.js",
+    'project:deploy': "script/saddle/deployProject.js",
     'token:verify': "script/saddle/verifyToken.js",
     'token:match': "script/saddle/matchToken.js",
     'flywheel:init': "script/saddle/flywheelInit.js"

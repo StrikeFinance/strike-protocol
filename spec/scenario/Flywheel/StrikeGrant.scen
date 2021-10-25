@@ -1,118 +1,114 @@
 -- Tests for the grants and math patch
 
-Macro StrikeGrantComptroller price=1.0 borrowRate=0.000005 strikeInitAmount=5000000e18
+Macro DeployComptroller price=1.0
     Unitroller Deploy
     PriceOracle Deploy Fixed price
     PriceOracleProxy Deploy Admin (PriceOracle Address) (Address Zero) (Address Zero) (Address Zero) (Address Zero) (Address Zero)
-    -- g2
-    ComptrollerImpl Deploy ScenarioG2 ComptrollerScenG2
-    Unitroller SetPendingImpl ComptrollerScenG2
-    ComptrollerImpl ComptrollerScenG2 BecomeG2
-    -- list some tokens
+    ComptrollerImpl Deploy Scenario ComptrollerScen
+    Unitroller SetPendingImpl ComptrollerScen
+    ComptrollerImpl ComptrollerScen Become
     Comptroller SetPriceOracle (PriceOracleProxy Address)
-    Comptroller SetMaxAssets 20
     Comptroller SetCloseFactor 0.5
     Comptroller LiquidationIncentive 1.1
-    -- Comptroller SetStrikeRate 1e18
+
+Macro SetupMarkets
     NewSToken ZRX sZRX
     NewSToken BAT sBAT
     Support sZRX collateralFactor:0.5
     Support sBAT collateralFactor:0.5
-    -- g3
-    ComptrollerImpl Deploy ScenarioG3 ComptrollerScenG3
-    Unitroller SetPendingImpl ComptrollerScenG3
-    ComptrollerImpl ComptrollerScenG3 BecomeG3 1e18 [sZRX sBAT]
+
+Macro SetupStrikeToken strikeInitAmount=5000000e18
     Erc20 Deploy Standard STRK "STRK Token" 18
     Give (Address Comptroller) strikeInitAmount STRK
-    -- g4
-    ComptrollerImpl Deploy ScenarioG4 ComptrollerScenG4
-    Unitroller SetPendingImpl ComptrollerScenG4
-    ComptrollerImpl ComptrollerScenG4 BecomeG4
-    -- current
-    ComptrollerImpl Deploy Scenario ComptrollerScen
-    Unitroller SetPendingImpl ComptrollerScen
-    ComptrollerImpl ComptrollerScen Become
     Comptroller Send "setSTRKAddress(address)" (Address STRK)
 
-Macro InitSpeeds
+-- NewComptroller, but with markets listed so that we can make them STRK markets in constructor
+Macro FlywheelComptroller price=1.0 borrowRate=0.000005 strikeInitAmount=5000000e18
+    DeployComptroller price
+    SetupMarkets
+    SetupStrikeToken strikeInitAmount
+
+Macro InitUsage
     Prep Geoff 100e18 ZRX sZRX
     Mint Geoff 50e18 sZRX--tokenbalance = 50e18 / 2e9 = 2.5e10
     Prep Coburn Some BAT sBAT
     Mint Coburn 6e18 sBAT--tokenbalance = 6e18 / 2e9 = 3e9
     EnterMarkets Coburn sBAT
     Borrow Coburn 1e18 sZRX
-    Comptroller SetStrikeSpeed sZRX 1
-    Comptroller SetStrikeSpeed sBAT 1
-    -- Comptroller RefreshStrikeSpeeds
-    -- Comptroller Send "setSTRKAddress(address)" (Address STRK)
 
-Test "STRK could be granted with liquidity rewards"
-    StrikeGrantComptroller
-    InitSpeeds
-    -- Baseline STRK amounts
+Macro InitUsageAndSpeeds
+    InitUsage
+    Comptroller SetStrikeSpeeds (sZRX sBAT) (1 1) (1 1)
+
+Test "STRK can be granted in combination with liquidity rewards"
+    FlywheelComptroller
+    InitUsageAndSpeeds
     Assert Equal (Comptroller StrikeAccrued Geoff) 0
     Assert Equal (Erc20 STRK TokenBalance Geoff) 0
     FastForward 1000 Blocks
     Comptroller ClaimStrike Geoff
-    Comptroller GrantSTRK Geoff 1000
+    Comptroller Send "_grantStrk(address,uint256)" (Address Geoff) 1000
     Assert Equal (Comptroller StrikeAccrued Geoff) 0
-    Assert Equal (Erc20 STRK TokenBalance Geoff) 2000
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 2000 -- 1000 (grant) + 1000 (STRK supply rewards)
 
 Test "STRK can be granted"
-    -- Grant First Time
-    StrikeGrantComptroller
-    InitSpeeds
+    -- Can be granted once
+    FlywheelComptroller
+    InitUsageAndSpeeds
     Assert Equal (Comptroller StrikeAccrued Geoff) 0
     Assert Equal (Erc20 STRK TokenBalance Geoff) 0
-    Comptroller GrantSTRK Geoff 1000
+    Comptroller Send "_grantStrk(address,uint256)" (Address Geoff) 1000
     Assert Equal (Comptroller StrikeAccrued Geoff) 0
     Assert Equal (Erc20 STRK TokenBalance Geoff) 1000
-    -- Grant Second Time
-    Comptroller GrantSTRK Geoff 2000
+    -- Assert Log StrikeGranted (recipient (Address Geoff)) (amount "1000")
+    -- Can be granted multiple times
+    Comptroller Send "_grantStrk(address,uint256)" (Address Geoff) 2000
     Assert Equal (Comptroller StrikeAccrued Geoff) 0
     Assert Equal (Erc20 STRK TokenBalance Geoff) 3000
 
 Test "STRK can be streamed to contributors"
-    StrikeGrantComptroller
-    InitSpeeds
+    FlywheelComptroller
+    InitUsageAndSpeeds
     Assert Equal (Comptroller StrikeAccrued Torrey) 0
     Assert Equal (Erc20 STRK TokenBalance Torrey) 0
-    Comptroller SetContributorStrikeSpeed Torrey 500
+    Comptroller Send "_setContributorStrikeSpeed(address,uint256)" (Address Torrey) 300
+    -- Assert Log ContributorStrikeSpeedUpdated (recipient (Address Torrey)) (amount "300")
     FastForward 1000 Blocks
-    -- Just claimStrike does not receive STRK
+    -- Just ClaimStrike does not receive STRK
     Comptroller ClaimStrike Torrey
     Assert Equal (Comptroller StrikeAccrued Torrey) 0
     Assert Equal (Erc20 STRK TokenBalance Torrey) 0
-    -- Call updateContributorRewards, claimStrike and check STRK Balance
+    -- Calling updateContributorRewards and then ClaimStrike receives STRK
     Comptroller UpdateContributorRewards Torrey
-    Assert Equal (Comptroller StrikeAccrued Torrey) 500000
+    Assert Equal (Comptroller StrikeAccrued Torrey) 300000
     Comptroller ClaimStrike Torrey
     Assert Equal (Comptroller StrikeAccrued Torrey) 0
-    Assert Equal (Erc20 STRK TokenBalance Torrey) 500000
+    Assert Equal (Erc20 STRK TokenBalance Torrey) 300000
 
 Test "STRK can be streamed in combination with liquidity rewards"
-    StrikeGrantComptroller
-    InitSpeeds
-    Comptroller SetContributorStrikeSpeed Geoff 500
+    FlywheelComptroller
+    InitUsageAndSpeeds
+    Comptroller Send "_setContributorStrikeSpeed(address,uint256)" (Address Geoff) 300
     FastForward 1000 Blocks
+    -- Just ClaimStrike does not receive STRK
     Comptroller UpdateContributorRewards Geoff
-    Assert Equal (Comptroller StrikeAccrued Geoff) 500000
+    Assert Equal (Comptroller StrikeAccrued Geoff) 300000
     Comptroller ClaimStrike Geoff
     Assert Equal (Comptroller StrikeAccrued Geoff) 0
-    Assert Equal (Erc20 STRK TokenBalance Geoff) 501000
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 301000 -- 300000 (contributer grant) + 1000 (STRK supply rewards)
 
 Test "STRK streaming can be changed for contributors"
-    StrikeGrantComptroller
-    InitSpeeds
-    Comptroller SetContributorStrikeSpeed Torrey 400
+    FlywheelComptroller
+    InitUsageAndSpeeds
+    Comptroller Send "_setContributorStrikeSpeed(address,uint256)" (Address Torrey) 300
     FastForward 1000 Blocks
-    Comptroller SetContributorStrikeSpeed Torrey 500
+    Comptroller Send "_setContributorStrikeSpeed(address,uint256)" (Address Torrey) 600
     FastForward 1000 Blocks
     Comptroller UpdateContributorRewards Torrey
     Comptroller ClaimStrike Torrey
     Assert Equal (Comptroller StrikeAccrued Torrey) 0
     Assert Equal (Erc20 STRK TokenBalance Torrey) 900000
-    Comptroller SetContributorStrikeSpeed Torrey 0
-    FastForward 1000 Blocks
+    Comptroller Send "_setContributorStrikeSpeed(address,uint256)" (Address Torrey) 0
+    FastForward 2000 Blocks
     Assert Equal (Comptroller StrikeAccrued Torrey) 0
     Assert Equal (Erc20 STRK TokenBalance Torrey) 900000

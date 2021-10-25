@@ -4,7 +4,9 @@ const {
   balanceOf,
   fastForward,
   pretendBorrow,
-  quickMint
+  quickMint,
+  quickBorrow,
+  enterMarkets
 } = require('../Utils/Strike');
 const {
   etherExp,
@@ -14,6 +16,7 @@ const {
 } = require('../Utils/Ethereum');
 
 const strikeRate = etherUnsigned(1e18);
+const strikeInitialIndex = 1e36;
 
 async function strikeAccrued(comptroller, user) {
   return etherUnsigned(await call(comptroller, 'strikeAccrued', [user]));
@@ -78,7 +81,7 @@ describe('Flywheel upgrade', () => {
 
 describe('Flywheel', () => {
   let root, a1, a2, a3, accounts;
-  let comptroller, sLOW, sREP, sZRX, cEVIL;
+  let comptroller, sLOW, sREP, sZRX, sEVIL;
   beforeEach(async () => {
     let interestRateModelOpts = {borrowRate: 0.000001};
     [root, a1, a2, a3, ...accounts] = saddle.accounts;
@@ -86,13 +89,14 @@ describe('Flywheel', () => {
     sLOW = await makeSToken({comptroller, supportMarket: true, underlyingPrice: 1, interestRateModelOpts});
     sREP = await makeSToken({comptroller, supportMarket: true, underlyingPrice: 2, interestRateModelOpts});
     sZRX = await makeSToken({comptroller, supportMarket: true, underlyingPrice: 3, interestRateModelOpts});
-    cEVIL = await makeSToken({comptroller, supportMarket: false, underlyingPrice: 3, interestRateModelOpts});
+    sEVIL = await makeSToken({comptroller, supportMarket: false, underlyingPrice: 3, interestRateModelOpts});
+    sUSD = await makeSToken({comptroller, supportMarket: true, underlyingPrice: 1, collateralFactor: 0.5, interestRateModelOpts});
   });
 
   describe('getStrikeMarkets()', () => {
     it('should return the strk markets', async () => {
       for (let mkt of [sLOW, sREP, sZRX]) {
-        await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+        await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(0.5)], [etherExp(0.5)]]);
       }
 
       expect(await call(comptroller, 'getStrikeMarkets')).toEqual(
@@ -101,15 +105,15 @@ describe('Flywheel', () => {
     });
   });
 
-  describe('SetStrikeSpeed()', () => {
+  describe('SetStrikeSpeeds()', () => {
     it('Should update market when calling setStrikeSpeed', async() => {
       const mkt = sREP;
       await send(comptroller, 'setBlockNumber', [0]);
       await send(mkt, 'harnessSetTotalSupply', [etherUnsigned(10e18)]);
 
-      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(0.5)], [etherExp(0.5)]]);
       await fastForward(comptroller, 20);
-      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(1)]);
+      await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(1)], [etherExp(0.5)]]);
 
       const { index, block } = await call(comptroller, 'strikeSupplyState', [mkt._address]);
       expect(index).toEqualNumber(2e36);
@@ -118,15 +122,19 @@ describe('Flywheel', () => {
 
     it('Should correctly drop a STRK market if called by admin', async() => {
       for (let mkt of [sLOW, sREP, sZRX]) {
-        await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+        await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(0.5)], [etherExp(0.5)]]);
       }
 
-      const tx = await send(comptroller, '_setStrikeSpeed', [sLOW._address, 0]);
+      const tx = await send(comptroller, '_setStrikeSpeeds', [[sLOW._address, 0], [0], [0]]);
       expect(await call(comptroller, 'getStrikeMarkets')).toEqual(
         [sREP, sZRX].map((coin) => coin._address)
       );
 
-      expect(tx).toHaveLog('StrikeSpeedUpdated', {
+      expect(tx).toHaveLog('CompBorrowSpeedUpdated', {
+        sToken: sLOW._address,
+        newSpeed: 0
+      });
+      expect(tx).toHaveLog('CompSupplySpeedUpdated', {
         sToken: sLOW._address,
         newSpeed: 0
       });
@@ -134,9 +142,9 @@ describe('Flywheel', () => {
 
     it('should correctly drop a STRK market from middle of array', async () => {
       for (let mkt of [sLOW, sREP, sZRX]) {
-        await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+        await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(0.5)], [etherExp(0.5)]]);
       }
-      await send(comptroller, '_setStrikeSpeed', [sREP._address, 0]);
+      await send(comptroller, '_setStrikeSpeeds', [[sREP._address], [0], [0]]);
       expect(await call(comptroller, 'getStrikeMarkets')).toEqual(
         [sLOW, sZRX].map((c) => c._address)
       );
@@ -144,10 +152,10 @@ describe('Flywheel', () => {
 
     it('should not drop a STRK market unless called by admin', async () => {
       for (let mkt of [sLOW, sREP, sZRX]) {
-        await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+        await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(0.5)], [etherExp(0.5)]]);
       }
       await expect(
-        send(comptroller, '_setStrikeSpeed', [sLOW._address, 0], {from: a1})
+        send(comptroller, '_setStrikeSpeeds', [[sLOW._address], [0], [etherExp(0.5)]], {from: a1})
       ).rejects.toRevert('revert only admin can set strike speed');
     });
 
@@ -165,7 +173,7 @@ describe('Flywheel', () => {
   describe('updateStrikeBorrowIndex()', () => {
     it('should calculate strk borrower index correctly', async () => {
       const mkt = sREP;
-      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(0.5)], [etherExp(0.5)]]);
       await send(comptroller, 'setBlockNumber', [100]);
       await send(mkt, 'harnessSetTotalBorrows', [etherUnsigned(11e18)]);      
       await send(comptroller, 'harnessUpdateStrikeBorrowIndex', [
@@ -201,37 +209,39 @@ describe('Flywheel', () => {
       ]);
 
       const {index, block} = await call(comptroller, 'strikeBorrowState', [mkt._address]);
-      expect(index).toEqualNumber(0);
+      expect(index).toEqualNumber(strikeInitialIndex);
       expect(block).toEqualNumber(100);
-      const speed = await call(comptroller, 'strikeSpeeds', [mkt._address]);
-      expect(speed).toEqualNumber(0);
+      const supplySpeed = await call(comptroller, 'strikeSupplySpeeds', [mkt._address]);
+      expect(supplySpeed).toEqualNumber(0);
+      const borrowSpeed = await call(comptroller, 'strikeBorrowSpeeds', [mkt._address]);
+      expect(borrowSpeed).toEqualNumber(0);
     });
 
     it('should not update index if no blocks passed since last accrual', async () => {
       const mkt = sREP;
-      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(0.5)], [etherExp(0.5)]]);
       await send(comptroller, 'harnessUpdateStrikeBorrowIndex', [
         mkt._address,
         etherExp(1.1),
       ]);
 
       const {index, block} = await call(comptroller, 'strikeBorrowState', [mkt._address]);
-      expect(index).toEqualNumber(1e36);
+      expect(index).toEqualNumber(strikeInitialIndex);
       expect(block).toEqualNumber(0);
     });
 
     it('should not update index if strk speed is 0', async () => {
       const mkt = sREP;
-      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(0.5)], [etherExp(0.5)]]);
       await send(comptroller, 'setBlockNumber', [100]);
-      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0)]);
+      await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(0)], [etherExp(0)]]);
       await send(comptroller, 'harnessUpdateStrikeBorrowIndex', [
         mkt._address,
         etherExp(1.1),
       ]);
 
       const {index, block} = await call(comptroller, 'strikeBorrowState', [mkt._address]);
-      expect(index).toEqualNumber(1e36);
+      expect(index).toEqualNumber(strikeInitialIndex);
       expect(block).toEqualNumber(100);
     });
   });
@@ -239,7 +249,7 @@ describe('Flywheel', () => {
   describe('updateStrikeSupplyIndex()', () => {
     it('should calculate strk supplier index correctly', async () => {
       const mkt = sREP;
-      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(0.5)], [etherExp(0.5)]]);
       await send(comptroller, 'setBlockNumber', [100]);
       await send(mkt, 'harnessSetTotalSupply', [etherUnsigned(10e18)]);
       await send(comptroller, 'harnessUpdateStrikeSupplyIndex', [mkt._address]);
@@ -267,10 +277,12 @@ describe('Flywheel', () => {
       ]);
 
       const {index, block} = await call(comptroller, 'strikeSupplyState', [mkt._address]);
-      expect(index).toEqualNumber(0);
+      expect(index).toEqualNumber(strikeInitialIndex);
       expect(block).toEqualNumber(100);
-      const speed = await call(comptroller, 'strikeSpeeds', [mkt._address]);
-      expect(speed).toEqualNumber(0);
+      const supplySpeed = await call(comptroller, 'strikeSupplySpeeds', [mkt._address]);
+      expect(supplySpeed).toEqualNumber(0);
+      const borrowSpeed = await call(comptroller, 'strikeBorrowSpeeds', [mkt._address]);
+      expect(borrowSpeed).toEqualNumber(0);
       // stoken could have no strk speed or strk supplier state if not in strk markets
       // this logic could also possibly be implemented in the allowed hook
     });
@@ -279,11 +291,11 @@ describe('Flywheel', () => {
       const mkt = sREP;
       await send(comptroller, 'setBlockNumber', [0]);
       await send(mkt, 'harnessSetTotalSupply', [etherUnsigned(10e18)]);
-      await send(comptroller, '_setStrikeSpeed', [mkt._address, etherExp(0.5)]);
+      await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(0.5)], [etherExp(0.5)]]);
       await send(comptroller, 'harnessUpdateStrikeSupplyIndex', [mkt._address]);
 
       const {index, block} = await call(comptroller, 'strikeSupplyState', [mkt._address]);
-      expect(index).toEqualNumber(1e36);
+      expect(index).toEqualNumber(strikeInitialIndex);
       expect(block).toEqualNumber(0);
     });
 
@@ -404,7 +416,7 @@ describe('Flywheel', () => {
       await send(comptroller, "harnessDistributeBorrowerStrike", [mkt._address, a1, etherExp(1.1)]);
       expect(await strikeAccrued(comptroller, a1)).toEqualNumber(0);
       expect(await strikeBalance(comptroller, a1)).toEqualNumber(0);
-      expect(await call(comptroller, 'strikeBorrowerIndex', [mkt._address, a1])).toEqualNumber(0);
+      expect(await call(comptroller, 'strikeBorrowerIndex', [mkt._address, a1])).toEqualNumber(strikeInitialIndex);
     });
   });
 
@@ -533,9 +545,10 @@ describe('Flywheel', () => {
       const strikeRemaining = strikeRate.mul(100), mintAmount = etherUnsigned(12e18), deltaBlocks = 10;
       await send(comptroller.strk, 'transfer', [comptroller._address, strikeRemaining], {from: root});
       await pretendBorrow(sLOW, a1, 1, 1, 100);
-      await send(comptroller, '_setStrikeSpeed', [sLOW._address, etherExp(0.5)]);
+      await send(comptroller, '_setStrikeSpeeds', [[sLOW._address], [etherExp(0.5)], [etherExp(0.5)]]);
       await send(comptroller, 'harnessRefreshStrikeSpeeds');
-      const speed = await call(comptroller, 'strikeSpeeds', [sLOW._address]);
+      const supplySpeed = await call(comptroller, 'strikeSupplySpeeds', [sLOW._address]);
+      const borrowSpeed = await call(comptroller, 'strikeBorrowSpeeds', [sLOW._address]);
       const a2AccruedPre = await strikeAccrued(comptroller, a2);
       const strikeBalancePre = await strikeBalance(comptroller, a2);
       await quickMint(sLOW, a2, mintAmount);
@@ -543,8 +556,9 @@ describe('Flywheel', () => {
       const tx = await send(comptroller, 'claimStrike', [a2]);
       const a2AccruedPost = await strikeAccrued(comptroller, a2);
       const strikeBalancePost = await strikeBalance(comptroller, a2);
-      expect(tx.gasUsed).toBeLessThan(400000);
-      expect(speed).toEqualNumber(strikeRate);
+      expect(tx.gasUsed).toBeLessThan(500000);
+      expect(supplySpeed).toEqualNumber(strikeRate);
+      expect(borrowSpeed).toEqualNumber(strikeRate);
       expect(a2AccruedPre).toEqualNumber(0);
       expect(a2AccruedPost).toEqualNumber(0);
       expect(strikeBalancePre).toEqualNumber(0);
@@ -557,7 +571,8 @@ describe('Flywheel', () => {
       await pretendBorrow(sLOW, a1, 1, 1, 100);
       await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address]]);
       await send(comptroller, 'harnessRefreshStrikeSpeeds');
-      const speed = await call(comptroller, 'strikeSpeeds', [sLOW._address]);
+      const supplySpeed = await call(comptroller, 'strikeSupplySpeeds', [sLOW._address]);
+      const borrowSpeed = await call(comptroller, 'strikeBorrowSpeeds', [sLOW._address]);
       const a2AccruedPre = await strikeAccrued(comptroller, a2);
       const strikeBalancePre = await strikeBalance(comptroller, a2);
       await quickMint(sLOW, a2, mintAmount);
@@ -566,7 +581,8 @@ describe('Flywheel', () => {
       const a2AccruedPost = await strikeAccrued(comptroller, a2);
       const strikeBalancePost = await strikeBalance(comptroller, a2);
       expect(tx.gasUsed).toBeLessThan(220000);
-      expect(speed).toEqualNumber(strikeRate);
+      expect(supplySpeed).toEqualNumber(strikeRate);
+      expect(borrowSpeed).toEqualNumber(strikeRate);
       expect(a2AccruedPre).toEqualNumber(0);
       expect(a2AccruedPost).toEqualNumber(0);
       expect(strikeBalancePre).toEqualNumber(0);
@@ -607,7 +623,7 @@ describe('Flywheel', () => {
 
       await fastForward(comptroller, deltaBlocks);
 
-      await expect(send(comptroller, 'claimStrike', [claimAccts, [sLOW._address, cEVIL._address], true, true])).rejects.toRevert('revert market must be listed');
+      await expect(send(comptroller, 'claimStrike', [claimAccts, [sLOW._address, sEVIL._address], true, true])).rejects.toRevert('revert market must be listed');
     });
 
 
@@ -689,19 +705,27 @@ describe('Flywheel', () => {
   describe('harnessRefreshStrikeSpeeds', () => {
     it('should start out 0', async () => {
       await send(comptroller, 'harnessRefreshStrikeSpeeds');
-      const speed = await call(comptroller, 'strikeSpeeds', [sLOW._address]);
-      expect(speed).toEqualNumber(0);
+      const supplySpeed = await call(comptroller, 'strikeSupplySpeeds', [sLOW._address]);
+      const borrowSpeed = await call(comptroller, 'strikeBorrowSpeeds', [sLOW._address]);
+      expect(supplySpeed).toEqualNumber(0);
+      expect(borrowSpeed).toEqualNumber(0);
     });
 
     it('should get correct speeds with borrows', async () => {
       await pretendBorrow(sLOW, a1, 1, 1, 100);
       await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address]]);
       const tx = await send(comptroller, 'harnessRefreshStrikeSpeeds');
-      const speed = await call(comptroller, 'strikeSpeeds', [sLOW._address]);
-      expect(speed).toEqualNumber(strikeRate);
-      expect(tx).toHaveLog(['StrikeSpeedUpdated', 0], {
+      const supplySpeed = await call(comptroller, 'strikeSupplySpeeds', [sLOW._address]);
+      const borrowSpeed = await call(comptroller, 'strikeBorrowSpeeds', [sLOW._address]);
+      expect(supplySpeed).toEqualNumber(strikeRate);
+      expect(borrowSpeed).toEqualNumber(strikeRate);
+      expect(tx).toHaveLog(['StrikeBorrowSpeedUpdated', 0], {
+        cToken: cLOW._address,
+        newSpeed: borrowSpeed
+      });
+      expect(tx).toHaveLog(['StrikeSupplySpeedUpdated', 0], {
         sToken: sLOW._address,
-        newSpeed: speed
+        newSpeed: supplySpeed
       });
     });
 
@@ -710,14 +734,134 @@ describe('Flywheel', () => {
       await pretendBorrow(sZRX, a1, 1, 1, 100);
       await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address, sZRX._address]]);
       await send(comptroller, 'harnessRefreshStrikeSpeeds');
-      const speed1 = await call(comptroller, 'strikeSpeeds', [sLOW._address]);
-      const speed2 = await call(comptroller, 'strikeSpeeds', [sREP._address]);
-      const speed3 = await call(comptroller, 'strikeSpeeds', [sZRX._address]);
-      expect(speed1).toEqualNumber(strikeRate.div(4));
-      expect(speed2).toEqualNumber(0);
-      expect(speed3).toEqualNumber(strikeRate.div(4).mul(3));
+      const supplySpeed1 = await call(comptroller, 'strikeSupplySpeeds', [sLOW._address]);
+      const borrowSpeed1 = await call(comptroller, 'strikeBorrowSpeeds', [sLOW._address]);
+      const supplySpeed2 = await call(comptroller, 'strikeSupplySpeeds', [sREP._address]);
+      const borrowSpeed2 = await call(comptroller, 'strikeBorrowSpeeds', [sREP._address]);
+      const supplySpeed3 = await call(comptroller, 'strikeSupplySpeeds', [sZRX._address]);
+      const borrowSpeed3 = await call(comptroller, 'strikeBorrowSpeeds', [sZRX._address]);
+      expect(supplySpeed1).toEqualNumber(strikeRate.dividedBy(4));
+      expect(borrowSpeed1).toEqualNumber(strikeRate.dividedBy(4));
+      expect(supplySpeed2).toEqualNumber(0);
+      expect(borrowSpeed2).toEqualNumber(0);
+      expect(supplySpeed3).toEqualNumber(strikeRate.dividedBy(4).multipliedBy(3));
+      expect(borrowSpeed3).toEqualNumber(strikeRate.dividedBy(4).multipliedBy(3));
     });
   });
+
+  describe('harnessSetStrikeSpeeds', () => {
+    it('should correctly set differing STRK supply and borrow speeds', async () => {
+      const desiredStrikeSupplySpeed = 3;
+      const desiredStrikeBorrowSpeed = 20;
+      await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address]]);
+      const tx = await send(comptroller, '_setCompSpeeds', [[sLOW._address], [desiredStrikeSupplySpeed], [desiredStrikeBorrowSpeed]]);
+      expect(tx).toHaveLog(['StrikeBorrowSpeedUpdated', 0], {
+        sToken: sLOW._address,
+        newSpeed: desiredStrikeBorrowSpeed
+      });
+      expect(tx).toHaveLog(['StrikeSupplySpeedUpdated', 0], {
+        sToken: sLOW._address,
+        newSpeed: desiredStrikeSupplySpeed
+      });
+      const currentStrikeSupplySpeed = await call(comptroller, 'strikeSupplySpeeds', [sLOW._address]);
+      const currentStrikeBorrowSpeed = await call(comptroller, 'strikeBorrowSpeeds', [sLOW._address]);
+      expect(currentStrikeSupplySpeed).toEqualNumber(desiredStrikeSupplySpeed);
+      expect(currentStrikeBorrowSpeed).toEqualNumber(desiredStrikeBorrowSpeed);
+    });
+
+    it('should correctly get differing STRK supply and borrow speeds for 4 assets', async () => {
+      const sBAT = await makeSToken({ comptroller, supportMarket: true });
+      const sDAI = await makeSToken({ comptroller, supportMarket: true });
+
+      const borrowSpeed1 = 5;
+      const supplySpeed1 = 10;
+
+      const borrowSpeed2 = 0;
+      const supplySpeed2 = 100;
+
+      const borrowSpeed3 = 0;
+      const supplySpeed3 = 0;
+
+      const borrowSpeed4 = 13;
+      const supplySpeed4 = 0;
+
+      await send(comptroller, 'harnessAddStrikeMarkets', [[sREP._address, sZRX._address, sBAT._address, sDAI._address]]);
+      await send(comptroller, '_setStrikeSpeeds', [[sREP._address, sZRX._address, sBAT._address, sDAI._address], [supplySpeed1, supplySpeed2, supplySpeed3, supplySpeed4], [borrowSpeed1, borrowSpeed2, borrowSpeed3, borrowSpeed4]]);
+
+      const currentSupplySpeed1 = await call(comptroller, 'strikeSupplySpeeds', [sREP._address]);
+      const currentBorrowSpeed1 = await call(comptroller, 'strikeBorrowSpeeds', [sREP._address]);
+      const currentSupplySpeed2 = await call(comptroller, 'strikeSupplySpeeds', [sZRX._address]);
+      const currentBorrowSpeed2 = await call(comptroller, 'strikeBorrowSpeeds', [sZRX._address]);
+      const currentSupplySpeed3 = await call(comptroller, 'strikeSupplySpeeds', [sBAT._address]);
+      const currentBorrowSpeed3 = await call(comptroller, 'strikeBorrowSpeeds', [sBAT._address]);
+      const currentSupplySpeed4 = await call(comptroller, 'strikeSupplySpeeds', [sDAI._address]);
+      const currentBorrowSpeed4 = await call(comptroller, 'strikeBorrowSpeeds', [sDAI._address]);
+
+      expect(currentSupplySpeed1).toEqualNumber(supplySpeed1);
+      expect(currentBorrowSpeed1).toEqualNumber(borrowSpeed1);
+      expect(currentSupplySpeed2).toEqualNumber(supplySpeed2);
+      expect(currentBorrowSpeed2).toEqualNumber(borrowSpeed2);
+      expect(currentSupplySpeed3).toEqualNumber(supplySpeed3);
+      expect(currentBorrowSpeed3).toEqualNumber(borrowSpeed3);
+      expect(currentSupplySpeed4).toEqualNumber(supplySpeed4);
+      expect(currentBorrowSpeed4).toEqualNumber(borrowSpeed4);
+    });
+
+    const checkAccrualsBorrowAndSupply = async (strikeSupplySpeed, strikeBorrowSpeed) => {
+      const mintAmount = etherUnsigned(1000e18), borrowAmount = etherUnsigned(1e18), borrowCollateralAmount = etherUnsigned(1000e18), strikeRemaining = strikeRate.multipliedBy(100), deltaBlocks = 10;
+
+      // Transfer STRK to the comptroller
+      await send(comptroller.strike, 'transfer', [comptroller._address, strikeRemaining], {from: root});
+
+      // Setup comptroller
+      await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address, sUSD._address]]);
+
+      // Set comp speeds to 0 while we setup
+      await send(comptroller, '_setStrikeSpeeds', [[sLOW._address, sUSD._address], [0, 0], [0, 0]]);
+
+      // a2 - supply
+      await quickMint(sLOW, a2, mintAmount); // a2 is the supplier
+
+      // a1 - borrow (with supplied collateral)
+      await quickMint(sUSD, a1, borrowCollateralAmount);
+      await enterMarkets([sUSD], a1);
+      await quickBorrow(sLOW, a1, borrowAmount); // a1 is the borrower
+
+      // Initialize strike speeds
+      await send(comptroller, '_setStrikeSpeeds', [[sLOW._address], [strikeSupplySpeed], [strikeBorrowSpeed]]);
+
+      // Get initial STRK balances
+      const a1TotalStrikePre = await totalStrikeAccrued(comptroller, a1);
+      const a2TotalStrikePre = await totalStrikeAccrued(comptroller, a2);
+
+      // Start off with no STRK accrued and no STRK balance
+      expect(a1TotalStrikePre).toEqualNumber(0);
+      expect(a2TotalStrikePre).toEqualNumber(0);
+
+      // Fast forward blocks
+      await fastForward(comptroller, deltaBlocks);
+
+      // Accrue COMP
+      await send(comptroller, 'claimStrike', [[a1, a2], [sLOW._address], true, true]);
+
+      // Get accrued STRK balances
+      const a1TotalStrikePost = await totalStrikeAccrued(comptroller, a1);
+      const a2TotalStrikePost = await totalStrikeAccrued(comptroller, a2);
+
+      // check accrual for borrow
+      expect(a1TotalStrikePost).toEqualNumber(Number(strikeBorrowSpeed) > 0 ? strikeBorrowSpeed.multipliedBy(deltaBlocks).minus(1) : 0);
+
+      // check accrual for supply
+      expect(a2TotalStrikePost).toEqualNumber(Number(strikeSupplySpeed) > 0 ? strikeSupplySpeed.multipliedBy(deltaBlocks) : 0);
+    };
+
+    it('should accrue strike correctly with only supply-side rewards', async () => {
+      await checkAccrualsBorrowAndSupply(/* supply speed */ etherExp(0.5), /* borrow speed */ 0);
+    });
+
+    it('should accrue strike correctly with only borrow-side rewards', async () => {
+      await checkAccrualsBorrowAndSupply(/* supply speed */ 0, /* borrow speed */ etherExp(0.5));
+    });
 
   describe('Grant STRK', () => {
     beforeEach(async () => {

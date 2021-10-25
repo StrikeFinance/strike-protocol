@@ -56,12 +56,15 @@ interface ComptrollerMethods {
   strikeSupplierIndex(market: string, account: string): Callable<string>
   strikeBorrowerIndex(market: string, account: string): Callable<string>
   strikeSpeeds(string): Callable<string>
+  strikeSupplySpeeds(string): Callable<string>
+  strikeBorrowSpeeds(string): Callable<string>
   claimStrike(string): Sendable<void>
   updateContributorRewards(account: string): Sendable<void>
   _setContributorStrikeSpeed(account: string, encodedNumber): Sendable<void>
   _grantSTRK(account: string, encodedNumber): Sendable<void>
   _setStrikeRate(encodedNumber): Sendable<void>
   _setStrikeSpeed(sToken: string, encodedNumber): Sendable<void>
+  _setStrikeSpeeds(cTokens: string[], supplySpeeds: encodedNumber[], borrowSpeeds: encodedNumber[]): Sendable<void>
 }
 
 export interface Comptroller extends Contract {

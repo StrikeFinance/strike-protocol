@@ -7,7 +7,10 @@ const {
   makeComptroller,
   makePriceOracle,
   makeSToken,
-  makeToken
+  makeToken,
+  quickMint,
+  balanceOf,
+  fastForward
 } = require('../Utils/Strike');
 
 describe('Comptroller', () => {
@@ -238,5 +241,21 @@ describe('Comptroller', () => {
       const sToken = await makeSToken({comptroller: comptroller});
       await expect(call(comptroller, 'redeemVerify', [sToken._address, accounts[0], 5, 0])).rejects.toRevert("revert redeemTokens zero");
     });
+  });
+
+
+  describe('canClaimStrikeBySuppling', () => {
+    it('check can token', async () => {
+      const comptroller = await makeComptroller();
+      const sToken1 = await makeSToken({comptroller: comptroller});
+      const sToken2 = await makeSToken({comptroller: comptroller});
+      let account0 = saddle.account;
+      // await quickMint(sToken1, account0, '100000000000000000');
+      // await fastForward(comptroller, 10);
+      // console.log(await balanceOf(sToken1, account0));
+      expect(await call(comptroller, 'canClaimStrikeBySuppling', [account0, [sToken1._address, sToken2._address]])).toEqual([false, false]);
+
+    });
   })
+
 });

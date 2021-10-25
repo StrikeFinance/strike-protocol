@@ -145,8 +145,9 @@ let filterInitialized = async (borrowersBySToken) => {
 	let batchSize = 75;
 	console.log(`Calling strikeBorrowerIndex for borrowers in batches of ${batchSize}...\n`);
 	for(let sTokenAddr of Object.keys(borrowersBySToken)) {
-		let speed = await call(Comptroller, 'strikeSpeeds', [sTokenAddr]);
-		if (Number(speed) != 0){
+		let supplySpeed = await call(Comptroller, 'strikeSupplySpeeds', [sTokenAddr]);
+		let borrowSpeed = await call(Comptroller, 'strikeBorrowSpeeds', [sTokenAddr]);
+		if (Number(supplySpeed) != 0 || Number(borrowSpeed) != 0) {
 			for (let borrowerChunk of getChunks(borrowersBySToken[sTokenAddr], batchSize)) {
 				try {
 					let indices = await Promise.all(borrowerChunk.map(

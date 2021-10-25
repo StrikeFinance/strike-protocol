@@ -13,7 +13,7 @@ import "./Governance/STRK.sol";
  * @title Strike's Comptroller Contract
  * @author Strike
  */
-contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerErrorReporter, Exponential {
+contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerErrorReporter, Exponential {
     /// @notice Emitted when an admin supports a market
     event MarketListed(SToken sToken);
 
@@ -67,6 +67,12 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
 
     /// @notice Emitted when Strike is granted
     event StrikeGranted(address recipient, uint amount);
+
+     /// @notice Emitted when a new borrow-side Strike speed is calculated for a market
+    event StrikeBorrowSpeedUpdated(SToken indexed sToken, uint newSpeed);
+
+    /// @notice Emitted when a new supply-side Strike speed is calculated for a market
+    event StrikeSupplySpeedUpdated(SToken indexed sToken, uint newSpeed);
 
     /// @notice The threshold above which the flywheel transfers STRK, in wei
     uint public constant strikeClaimThreshold = 0.001e18;
@@ -1014,11 +1020,34 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
         markets[address(sToken)] = Market({isListed: true, isStriked: false, collateralFactorMantissa: 0});
 
         _addMarketInternal(address(sToken));
+        _initializeMarket(address(sToken));
 
         emit MarketListed(sToken);
 
         return uint(Error.NO_ERROR);
     }
+
+    function _initializeMarket(address sToken) internal {
+        uint32 blockNumber = safe32(getBlockNumber(), "block number exceeds 32 bits");
+
+        StrikeMarketState storage supplyState = strikeSupplyState[sToken];
+        StrikeMarketState storage borrowState = strikeBorrowState[sToken];
+
+        /*
+         * Update market state indices
+         */
+        if (supplyState.index == 0) {
+            // Initialize supply state index with default value
+            supplyState.index = strikeInitialIndex;
+        }
+
+         if (borrowState.index == 0) {
+            // Initialize borrow state index with default value
+            borrowState.index = strikeInitialIndex;
+        }
+
+        supplyState.block = borrowState.block = blockNumber;
+    }    
 
     function _addMarketInternal(address sToken) internal {
         for (uint i = 0; i < allMarkets.length; i ++) {
@@ -1104,46 +1133,37 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
     /**
      * @notice Set STRK speed for a single market
      * @param sToken The market whose STRK speed to update
-     * @param strikeSpeed New STRK speed for market
+     * @param supplySpeeds New supply-side STRK speed for market
+     * @param borrowSpeeds New borrow-side STRK speed for market
      */
-    function _setStrikeSpeed(SToken sToken, uint strikeSpeed) public {
+    function _setStrikeSpeeds(SToken[] memory sToken, uint[] memory supplySpeeds, uint[] memory borrowSpeeds) public {
         require(adminOrInitializing(), "only admin can set strike speed");
-        setStrikeSpeedInternal(sToken, strikeSpeed);
+
+        uint numTokens = sToken.length;
+        require(numTokens == supplySpeeds.length && numTokens == borrowSpeeds.length, "Comptroller::_setCompSpeeds invalid input");
+
+        for (uint i = 0; i < numTokens; ++i) {
+            setStrikeSpeedInternal(sToken[i], supplySpeeds[i], borrowSpeeds[i]);
+        }
     }
 
-    function setStrikeSpeedInternal(SToken sToken, uint strikeSpeed) internal {
-        uint currentStrikeSpeed = strikeSpeeds[address(sToken)];
+    function setStrikeSpeedInternal(SToken sToken, uint supplySpeed, uint borrowSpeed) internal {
+        Market storage market = markets[address(sToken)];
+        require(market.isListed, "strike market is not listed");
 
-        if (currentStrikeSpeed != 0) {
-            // STRK speed could be set to 0 to half liquidity rewards for a market
-            Exp memory borrowIndex = Exp({
-                mantissa: sToken.borrowIndex()
-            });
+        if (strikeSupplySpeeds[address(sToken)] != supplySpeed) {
             updateStrikeSupplyIndex(address(sToken));
-            updateStrikeBorrowIndex(address(sToken), borrowIndex);
-        } else if (strikeSpeed != 0) {
-            // Add the STRK market
-            Market storage market = markets[address(sToken)];
-            require(market.isListed == true, "strike market is not listed");
-
-            if (strikeSupplyState[address(sToken)].index == 0 && strikeSupplyState[address(sToken)].block == 0) {
-                strikeSupplyState[address(sToken)] = StrikeMarketState({
-                    index: strikeInitialIndex,
-                    block: safe32(getBlockNumber(), "block number exceeds 32 bits")
-                });
-            }
-
-            if (strikeBorrowState[address(sToken)].index == 0 && strikeBorrowState[address(sToken)].block == 0) {
-                strikeBorrowState[address(sToken)] = StrikeMarketState({
-                    index: strikeInitialIndex,
-                    block: safe32(getBlockNumber(), "block number exceeds 32 bits")
-                });
-            }
+            strikeSupplySpeeds[address(sToken)] = supplySpeed;
+            emit StrikeSupplySpeedUpdated(sToken, supplySpeed);
         }
 
-        if (currentStrikeSpeed != strikeSpeed) {
-            strikeSpeeds[address(sToken)] = strikeSpeed;
-            emit StrikeSpeedUpdated(sToken, strikeSpeed);
+        if (strikeBorrowSpeeds[address(sToken)] != borrowSpeed) {
+            Exp memory borrowIndex = Exp({mantissa: sToken.borrowIndex()});
+            updateStrikeBorrowIndex(address(sToken), borrowIndex);
+
+            // Update speed and emit event
+            strikeBorrowSpeeds[address(sToken)] = borrowSpeed;
+            emit StrikeBorrowSpeedUpdated(sToken, borrowSpeed);
         }
     }
 
@@ -1153,20 +1173,17 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
      */
     function updateStrikeSupplyIndex(address sToken) internal {
         StrikeMarketState storage supplyState = strikeSupplyState[sToken];
-        uint supplySpeed = strikeSpeeds[sToken];
-        uint blockNumber = getBlockNumber();
-        uint deltaBlocks = sub_(blockNumber, uint(supplyState.block));
+        uint supplySpeed = strikeSupplySpeeds[sToken];
+        uint32 blockNumber = safe32(getBlockNumber(), "block number exceeds 32 bits");
+        uint deltaBlocks = sub_(uint(blockNumber), uint(supplyState.block));
         if (deltaBlocks > 0 && supplySpeed > 0) {
             uint supplyTokens = SToken(sToken).totalSupply();
             uint strikeAccrued = mul_(deltaBlocks, supplySpeed);
             Double memory ratio = supplyTokens > 0 ? fraction(strikeAccrued, supplyTokens) : Double({mantissa: 0});
-            Double memory index = add_(Double({mantissa: supplyState.index}), ratio);
-            strikeSupplyState[sToken] = StrikeMarketState({
-                index: safe224(index.mantissa, "new index exceeds 224 bits"),
-                block: safe32(blockNumber, "block number exceeds 32 bits")
-            });
+            supplyState.index = safe224(add_(Double({mantissa: supplyState.index}), ratio).mantissa, "new index exceeds 224 bits");
+            supplyState.block = blockNumber;
         } else if (deltaBlocks > 0) {
-            supplyState.block = safe32(blockNumber, "block number exceeds 32 bits");
+            supplyState.block = blockNumber;
         }
     }
 
@@ -1176,20 +1193,17 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
      */
     function updateStrikeBorrowIndex(address sToken, Exp memory marketBorrowIndex) internal {
         StrikeMarketState storage borrowState = strikeBorrowState[sToken];
-        uint borrowSpeed = strikeSpeeds[sToken];
-        uint blockNumber = getBlockNumber();
-        uint deltaBlocks = sub_(blockNumber, uint(borrowState.block));
+        uint borrowSpeed = strikeBorrowSpeeds[sToken];
+        uint32 blockNumber = safe32(getBlockNumber(), "block number exceeds 32 bits");
+        uint deltaBlocks = sub_(uint(blockNumber), uint(borrowState.block));
         if (deltaBlocks > 0 && borrowSpeed > 0) {
             uint borrowAmount = div_(SToken(sToken).totalBorrows(), marketBorrowIndex);
             uint strikeAccrued = mul_(deltaBlocks, borrowSpeed);
             Double memory ratio = borrowAmount > 0 ? fraction(strikeAccrued, borrowAmount) : Double({mantissa: 0});
-            Double memory index = add_(Double({mantissa: borrowState.index}), ratio);
-            strikeBorrowState[sToken] = StrikeMarketState({
-                index: safe224(index.mantissa, "new index exceeds 224 bits"),
-                block: safe32(blockNumber, "block number exceeds 32 bits")
-            });
+            borrowState.index = safe224(add_(Double({mantissa: borrowState.index}), ratio).mantissa, "new index exceeds 224 bits");
+            borrowState.block = blockNumber;
         } else if (deltaBlocks > 0) {
-            borrowState.block = safe32(blockNumber, "block number exceeds 32 bits");
+            borrowState.block = blockNumber;
         }
     }
 
@@ -1200,20 +1214,22 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
      */
     function distributeSupplierStrike(address sToken, address supplier) internal {
         StrikeMarketState storage supplyState = strikeSupplyState[sToken];
-        Double memory supplyIndex = Double({mantissa: supplyState.index});
-        Double memory supplierIndex = Double({mantissa: strikeSupplierIndex[sToken][supplier]});
-        strikeSupplierIndex[sToken][supplier] = supplyIndex.mantissa;
 
-        if (supplierIndex.mantissa == 0 && supplyIndex.mantissa > 0) {
-            supplierIndex.mantissa = strikeInitialIndex;
+        uint supplyIndex = supplyState.index;
+        uint supplierIndex = strikeSupplierIndex[sToken][supplier];
+
+        strikeSupplierIndex[sToken][supplier] = supplyIndex;
+
+        if (supplierIndex == 0 && supplyIndex >= strikeInitialIndex) {
+            supplierIndex = strikeInitialIndex;
         }
 
-        Double memory deltaIndex = sub_(supplyIndex, supplierIndex);
+        Double memory deltaIndex = Double({mantissa: sub_(supplyIndex, supplierIndex)});
         uint supplierTokens = SToken(sToken).balanceOf(supplier);
         uint supplierDelta = mul_(supplierTokens, deltaIndex);
         uint supplierAccrued = add_(strikeAccrued[supplier], supplierDelta);
         strikeAccrued[supplier] = supplierAccrued;
-        emit DistributedSupplierStrike(SToken(sToken), supplier, supplierDelta, supplyIndex.mantissa);
+        emit DistributedSupplierStrike(SToken(sToken), supplier, supplierDelta, supplyIndex);
     }
 
     /**
@@ -1224,18 +1240,24 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
      */
     function distributeBorrowerStrike(address sToken, address borrower, Exp memory marketBorrowIndex) internal {
         StrikeMarketState storage borrowState = strikeBorrowState[sToken];
-        Double memory borrowIndex = Double({mantissa: borrowState.index});
-        Double memory borrowerIndex = Double({mantissa: strikeBorrowerIndex[sToken][borrower]});
-        strikeBorrowerIndex[sToken][borrower] = borrowIndex.mantissa;
 
-        if (borrowerIndex.mantissa > 0) {
-            Double memory deltaIndex = sub_(borrowIndex, borrowerIndex);
-            uint borrowerAmount = div_(SToken(sToken).borrowBalanceStored(borrower), marketBorrowIndex);
-            uint borrowerDelta = mul_(borrowerAmount, deltaIndex);
-            uint borrowerAccrued = add_(strikeAccrued[borrower], borrowerDelta);
-            strikeAccrued[borrower] = borrowerAccrued;
-            emit DistributedBorrowerStrike(SToken(sToken), borrower, borrowerDelta, borrowIndex.mantissa);
+        uint borrowIndex = borrowState.index;
+        uint borrowerIndex = strikeBorrowerIndex[sToken][borrower];
+
+        strikeBorrowerIndex[sToken][borrower] = borrowIndex;
+
+        if (borrowerIndex == 0 && borrowIndex >= strikeInitialIndex) {
+            borrowerIndex = strikeInitialIndex;
         }
+
+        Double memory deltaIndex = Double({mantissa: sub_(borrowIndex, borrowerIndex)});
+        uint borrowerAmount = div_(SToken(sToken).borrowBalanceStored(borrower), marketBorrowIndex);
+        
+        // Calculate strike accrued: sTokenAmount * accruedPerBorrowedUnit
+        uint borrowerDelta = mul_(borrowerAmount, deltaIndex);
+        uint borrowerAccrued = add_(strikeAccrued[borrower], borrowerDelta);
+        strikeAccrued[borrower] = borrowerAccrued;
+        emit DistributedBorrowerStrike(SToken(sToken), borrower, borrowerDelta, borrowIndex);
     }
 
     /**
@@ -1292,15 +1314,17 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
                 updateStrikeBorrowIndex(address(sToken), borrowIndex);
                 for (uint j = 0; j < holders.length; j++) {
                     distributeBorrowerStrike(address(sToken), holders[j], borrowIndex);
-                    strikeAccrued[holders[j]] = grantSTRKInternal(holders[j], strikeAccrued[holders[j]]);
                 }
             }
             if (suppliers) {
                 updateStrikeSupplyIndex(address(sToken));
                 for (uint j = 0; j < holders.length; j++) {
-                    distributeSupplierStrike(address(sToken), holders[j]);
-                    strikeAccrued[holders[j]] = grantSTRKInternal(holders[j], strikeAccrued[holders[j]]);
+                    distributeSupplierStrike(address(sToken), holders[j]);                    
                 }
+            }
+
+            for (uint j = 0; j < holders.length; j++) {
+                strikeAccrued[holders[j]] = grantSTRKInternal(holders[j], strikeAccrued[holders[j]]);
             }
         }
     }
@@ -1313,6 +1337,19 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
      * @return The amount of STRK which was NOT transferred to the user
      */
     function grantSTRKInternal(address user, uint amount) internal returns (uint) {
+
+        for (uint i = 0; i < allMarkets.length; ++i) {
+            address market = address(allMarkets[i]);
+
+            bool noOriginalSpeed = strikeBorrowSpeeds[market] == 0;
+            bool invalidSupply = noOriginalSpeed && strikeSupplierIndex[market][user] > 0;
+            bool invalidBorrow = noOriginalSpeed && strikeBorrowerIndex[market][user] > 0;
+
+            if (invalidSupply || invalidBorrow) {
+                return amount;
+            }
+        }
+
         STRK strk = STRK(getSTRKAddress());
         uint strikeRemaining = strk.balanceOf(address(this));
         if (amount > 0 && amount <= strikeRemaining) {
@@ -1430,4 +1467,22 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
     function getSTRKAddress() public view returns (address) {
         return 0x74232704659ef37c08995e386A2E26cc27a8d7B1;
     }
+
+    /**
+     * @notice check user can claim Strike Token by suppling
+     * @return bool: true - can claim, false: cannot claim
+     */
+
+    function canClaimStrikeBySuppling(address user, SToken[] memory tokens) public view returns (bool[] memory) {
+        uint len = tokens.length;
+        bool[] memory canClaims = new bool[](len);
+        for (uint i = 0; i < len; i++) {
+            SToken token = tokens[i];
+            uint supplyTokens = token.balanceOf(user);
+            canClaims[i] = supplyTokens > 0 ? true : false;
+        }
+        return canClaims;
+    }
+
+
 }
