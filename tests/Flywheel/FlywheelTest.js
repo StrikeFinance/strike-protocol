@@ -14,6 +14,7 @@ const {
   etherUnsigned,
   etherMantissa
 } = require('../Utils/Ethereum');
+const { default: BigNumber } = require('bignumber.js');
 
 const strikeRate = etherUnsigned(1e18);
 const strikeInitialIndex = 1e36;
@@ -125,16 +126,16 @@ describe('Flywheel', () => {
         await send(comptroller, '_setStrikeSpeeds', [[mkt._address], [etherExp(0.5)], [etherExp(0.5)]]);
       }
 
-      const tx = await send(comptroller, '_setStrikeSpeeds', [[sLOW._address, 0], [0], [0]]);
+      const tx = await send(comptroller, '_setStrikeSpeeds', [[sLOW._address], [0], [0]]);
       expect(await call(comptroller, 'getStrikeMarkets')).toEqual(
         [sREP, sZRX].map((coin) => coin._address)
       );
 
-      expect(tx).toHaveLog('CompBorrowSpeedUpdated', {
+      expect(tx).toHaveLog('StrikeBorrowSpeedUpdated', {
         sToken: sLOW._address,
         newSpeed: 0
       });
-      expect(tx).toHaveLog('CompSupplySpeedUpdated', {
+      expect(tx).toHaveLog('StrikeSupplySpeedUpdated', {
         sToken: sLOW._address,
         newSpeed: 0
       });
@@ -720,7 +721,7 @@ describe('Flywheel', () => {
       expect(supplySpeed).toEqualNumber(strikeRate);
       expect(borrowSpeed).toEqualNumber(strikeRate);
       expect(tx).toHaveLog(['StrikeBorrowSpeedUpdated', 0], {
-        cToken: cLOW._address,
+        sToken: sLOW._address,
         newSpeed: borrowSpeed
       });
       expect(tx).toHaveLog(['StrikeSupplySpeedUpdated', 0], {
@@ -740,12 +741,13 @@ describe('Flywheel', () => {
       const borrowSpeed2 = await call(comptroller, 'strikeBorrowSpeeds', [sREP._address]);
       const supplySpeed3 = await call(comptroller, 'strikeSupplySpeeds', [sZRX._address]);
       const borrowSpeed3 = await call(comptroller, 'strikeBorrowSpeeds', [sZRX._address]);
-      expect(supplySpeed1).toEqualNumber(strikeRate.dividedBy(4));
-      expect(borrowSpeed1).toEqualNumber(strikeRate.dividedBy(4));
+      const strikeRateBN = new BigNumber(strikeRate.toString());
+      expect(supplySpeed1).toEqualNumber(strikeRateBN.dividedBy(4));
+      expect(borrowSpeed1).toEqualNumber(strikeRateBN.dividedBy(4));
       expect(supplySpeed2).toEqualNumber(0);
       expect(borrowSpeed2).toEqualNumber(0);
-      expect(supplySpeed3).toEqualNumber(strikeRate.dividedBy(4).multipliedBy(3));
-      expect(borrowSpeed3).toEqualNumber(strikeRate.dividedBy(4).multipliedBy(3));
+      expect(supplySpeed3).toEqualNumber(strikeRateBN.dividedBy(4).multipliedBy(3));
+      expect(borrowSpeed3).toEqualNumber(strikeRateBN.dividedBy(4).multipliedBy(3));
     });
   });
 
@@ -754,7 +756,7 @@ describe('Flywheel', () => {
       const desiredStrikeSupplySpeed = 3;
       const desiredStrikeBorrowSpeed = 20;
       await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address]]);
-      const tx = await send(comptroller, '_setCompSpeeds', [[sLOW._address], [desiredStrikeSupplySpeed], [desiredStrikeBorrowSpeed]]);
+      const tx = await send(comptroller, '_setStrikeSpeeds', [[sLOW._address], [desiredStrikeSupplySpeed], [desiredStrikeBorrowSpeed]]);
       expect(tx).toHaveLog(['StrikeBorrowSpeedUpdated', 0], {
         sToken: sLOW._address,
         newSpeed: desiredStrikeBorrowSpeed
@@ -808,10 +810,11 @@ describe('Flywheel', () => {
     });
 
     const checkAccrualsBorrowAndSupply = async (strikeSupplySpeed, strikeBorrowSpeed) => {
-      const mintAmount = etherUnsigned(1000e18), borrowAmount = etherUnsigned(1e18), borrowCollateralAmount = etherUnsigned(1000e18), strikeRemaining = strikeRate.multipliedBy(100), deltaBlocks = 10;
+      const strikeRateBN = new BigNumber(strikeRate.toString());
+      const mintAmount = etherUnsigned(1000e18), borrowAmount = etherUnsigned(1e18), borrowCollateralAmount = etherUnsigned(1000e18), strikeRemaining = strikeRateBN.multipliedBy(100), deltaBlocks = 10;
 
       // Transfer STRK to the comptroller
-      await send(comptroller.strike, 'transfer', [comptroller._address, strikeRemaining], {from: root});
+      await send(comptroller.strk, 'transfer', [comptroller._address, strikeRemaining.toString()], {from: root});
 
       // Setup comptroller
       await send(comptroller, 'harnessAddStrikeMarkets', [[sLOW._address, sUSD._address]]);
@@ -849,19 +852,22 @@ describe('Flywheel', () => {
       const a2TotalStrikePost = await totalStrikeAccrued(comptroller, a2);
 
       // check accrual for borrow
-      expect(a1TotalStrikePost).toEqualNumber(Number(strikeBorrowSpeed) > 0 ? strikeBorrowSpeed.multipliedBy(deltaBlocks).minus(1) : 0);
+      const strikeBorrowSpeedBN = new BigNumber(strikeBorrowSpeed.toString());
+      expect(a1TotalStrikePost).toEqualNumber(Number(strikeBorrowSpeed) > 0 ? strikeBorrowSpeedBN.multipliedBy(deltaBlocks).minus(1) : 0);
 
       // check accrual for supply
-      expect(a2TotalStrikePost).toEqualNumber(Number(strikeSupplySpeed) > 0 ? strikeSupplySpeed.multipliedBy(deltaBlocks) : 0);
+      const strikeSupplySpeedBN = new BigNumber(strikeSupplySpeed.toString());
+      expect(a2TotalStrikePost).toEqualNumber(Number(strikeSupplySpeed) > 0 ? strikeSupplySpeedBN.multipliedBy(deltaBlocks) : 0);
     };
 
     it('should accrue strike correctly with only supply-side rewards', async () => {
-      await checkAccrualsBorrowAndSupply(/* supply speed */ etherExp(0.5), /* borrow speed */ 0);
+      await checkAccrualsBorrowAndSupply(/* supply speed */ etherExp(0.5), /* borrow speed */ etherExp(0));
     });
 
     it('should accrue strike correctly with only borrow-side rewards', async () => {
       await checkAccrualsBorrowAndSupply(/* supply speed */ 0, /* borrow speed */ etherExp(0.5));
     });
+  });
 
   describe('Grant STRK', () => {
     beforeEach(async () => {
