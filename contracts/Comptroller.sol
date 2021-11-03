@@ -1473,15 +1473,15 @@ contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerE
      * @return bool: true - can claim, false: cannot claim
      */
 
-    function canClaimStrikeBySuppling(address user, SToken[] memory tokens) public view returns (bool[] memory) {
-        uint len = tokens.length;
-        bool[] memory canClaims = new bool[](len);
-        for (uint i = 0; i < len; i++) {
-            SToken token = tokens[i];
-            uint supplyTokens = token.balanceOf(user);
-            canClaims[i] = supplyTokens > 0 ? true : false;
+    function canClaimStrikeBySuppling(address user) public view returns (bool) {
+        SToken[] memory sTokens = accountAssets[user];
+        for (uint i = 0; i < sTokens.length; i++) {
+            SToken asset = sTokens[i];
+            if (asset.balanceOf(user) > 0) {
+                return true;
+            }
         }
-        return canClaims;
+        return false;
     }
 
 
