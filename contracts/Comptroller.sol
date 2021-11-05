@@ -1319,7 +1319,7 @@ contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerE
             if (suppliers) {
                 updateStrikeSupplyIndex(address(sToken));
                 for (uint j = 0; j < holders.length; j++) {
-                    distributeSupplierStrike(address(sToken), holders[j]);                    
+                    distributeSupplierStrike(address(sToken), holders[j]);
                 }
             }
 
