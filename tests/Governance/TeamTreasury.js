@@ -5,14 +5,16 @@ const {
   minerStop,
   unlockedAccount,
   mineBlock,
-  increaseTime
+  increaseTime,
+  etherExp,
+  etherUnsigned
 } = require('../Utils/Ethereum');
 
 describe('Team Treasury', () => {
   let root, a1, a2, accounts, chainId;
   let CHNToken;
-  let initAmount = '10000000000000000000000000';
-  let periodAmount = "250000000000000000000000";
+  let initAmount = etherUnsigned(1e25);
+  let periodAmount = etherUnsigned(25e22);
   let period = 30 * 24 * 60 * 60;
 
   it('check amount token', async () => {
@@ -29,11 +31,11 @@ describe('Team Treasury', () => {
     await increaseTime(period - 100);
     expect(await call(treasuryContract, 'getUnlockedAmount', [])).toEqual("0");
     await increaseTime(100);
-    expect(await call(treasuryContract, 'getUnlockedAmount', [])).toEqual(periodAmount);
+    expect(await call(treasuryContract, 'getUnlockedAmount', [])).toEqual(periodAmount.toString());
     await increaseTime(period * 3.5);
-    expect(await call(treasuryContract, 'getUnlockedAmount', [])).toEqual("1000000000000000000000000");
+    expect(await call(treasuryContract, 'getUnlockedAmount', [])).toEqual(periodAmount.mul(4).toString());
     await increaseTime(period * 0.4);
-    expect(await call(treasuryContract, 'getUnlockedAmount', [])).toEqual("1000000000000000000000000");
+    expect(await call(treasuryContract, 'getUnlockedAmount', [])).toEqual(periodAmount.mul(4).toString());
 
     expect(await call(CHNToken, 'balanceOf', [root])).toEqualNumber("0");
 
@@ -45,19 +47,26 @@ describe('Team Treasury', () => {
 
     await send(treasuryContract, 'withdrawAllUnlockToken', [], {from: root});
     
-    expect(await call(CHNToken, 'balanceOf', [root])).toEqualNumber("1000000000000000000000000");
-    expect(await call(CHNToken, 'balanceOf', [treasuryContract._address])).toEqualNumber("9000000000000000000000000");
+    expect(await call(CHNToken, 'balanceOf', [root])).toEqualNumber(periodAmount.mul(4).toString());
+    expect(await call(CHNToken, 'balanceOf', [treasuryContract._address])).toEqualNumber(initAmount.sub(periodAmount.mul(4)).toString());
     
     await expect(
       send(treasuryContract, 'withdrawAllUnlockToken', [], {from: root})
     ).rejects.toRevert("revert INVALID AMOUNT");
 
-    expect(await call(CHNToken, 'balanceOf', [root])).toEqualNumber("1000000000000000000000000");
+    expect(await call(CHNToken, 'balanceOf', [root])).toEqualNumber(periodAmount.mul(4).toString());
+
+
+    await increaseTime(period * 0.2);
+    expect(await call(treasuryContract, 'getUnlockedAmount', [])).toEqual(periodAmount.toString());
+    await send(treasuryContract, 'withdrawAllUnlockToken', [], {from: root});
+    expect(await call(treasuryContract, 'getClaimedAmount', [], {from: root})).toEqualNumber(periodAmount.mul(5).toString());
+    expect(await call(treasuryContract, 'getUnlockedAmount', [], {from: root})).toEqualNumber("0");
 
     // period > 40 period => unlock amount = initAmount - claimAmount
     await increaseTime(period * 42);
-    expect(await call(treasuryContract, 'getClaimedAmount', [], {from: root})).toEqualNumber("1000000000000000000000000");
-    expect(await call(treasuryContract, 'getUnlockedAmount', [])).toEqual("9000000000000000000000000");
+    expect(await call(treasuryContract, 'getClaimedAmount', [], {from: root})).toEqualNumber(periodAmount.mul(5).toString());
+    expect(await call(treasuryContract, 'getUnlockedAmount', [])).toEqual(initAmount.sub(periodAmount.mul(5)).toString());
   });
 
 
