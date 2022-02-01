@@ -1292,16 +1292,18 @@ contract Comptroller is ComptrollerV4Storage, ComptrollerInterface, ComptrollerE
                 updateStrikeBorrowIndex(address(sToken), borrowIndex);
                 for (uint j = 0; j < holders.length; j++) {
                     distributeBorrowerStrike(address(sToken), holders[j], borrowIndex);
-                    strikeAccrued[holders[j]] = grantSTRKInternal(holders[j], strikeAccrued[holders[j]]);
                 }
             }
             if (suppliers) {
                 updateStrikeSupplyIndex(address(sToken));
                 for (uint j = 0; j < holders.length; j++) {
                     distributeSupplierStrike(address(sToken), holders[j]);
-                    strikeAccrued[holders[j]] = grantSTRKInternal(holders[j], strikeAccrued[holders[j]]);
                 }
             }
+        }
+        
+        for (uint j = 0; j < holders.length; j++) {
+            strikeAccrued[holders[j]] = grantSTRKInternal(holders[j], strikeAccrued[holders[j]]);
         }
     }
 
