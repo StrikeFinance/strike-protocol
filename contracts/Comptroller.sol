@@ -1337,6 +1337,17 @@ contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerE
      * @return The amount of STRK which was NOT transferred to the user
      */
     function grantSTRKInternal(address user, uint amount) internal returns (uint) {
+        for (uint i = 0; i < allMarkets.length; ++i) {
+            address market = address(allMarkets[i]);
+
+            bool noOriginalSpeed = strikeBorrowSpeeds[market] == 0;
+            bool invalidSupply = noOriginalSpeed && strikeSupplierIndex[market][user] > 0;
+            bool invalidBorrow = noOriginalSpeed && strikeBorrowerIndex[market][user] > 0;
+
+            if (invalidSupply || invalidBorrow) {
+                return amount;
+            }
+        }
         STRK strk = STRK(getSTRKAddress());
         uint strikeRemaining = strk.balanceOf(address(this));
         if (amount > 0 && amount <= strikeRemaining) {
