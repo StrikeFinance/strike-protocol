@@ -43,3 +43,5 @@ junit.xml
 .last_confs
 .saddle_history
 contracts/artifacts/*
+artifacts/
+cache/
