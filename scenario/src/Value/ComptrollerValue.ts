@@ -547,7 +547,33 @@ export function comptrollerFetchers() {
       async (world, {comptroller, SToken}) => {
         return new NumberV(await comptroller.methods.strikeSpeeds(SToken._address).call());
       }
-    )
+    ),
+    new Fetcher<{comptroller: Comptroller, SToken: SToken}, NumberV>(`
+        #### StrikeSupplySpeed
+        * "Comptroller StrikeSupplySpeed sZRX
+      `,
+      "StrikeSupplySpeed",
+      [
+        new Arg("comptroller", getComptroller, {implicit: true}),
+        new Arg("SToken", getSTokenV),
+      ],
+      async (world, {comptroller, SToken}) => {
+        return new NumberV(await comptroller.methods.strikeSupplySpeeds(SToken._address).call());
+      }
+    ),
+    new Fetcher<{comptroller: Comptroller, SToken: SToken}, NumberV>(`
+        #### StrikeBorrowSpeed
+        * "Comptroller StrikeBorrowSpeed sZRX
+      `,
+      "StrikeBorrowSpeed",
+      [
+        new Arg("comptroller", getComptroller, {implicit: true}),
+        new Arg("SToken", getSTokenV),
+      ],
+      async (world, {comptroller, SToken}) => {
+        return new NumberV(await comptroller.methods.strikeBorrowSpeeds(SToken._address).call());
+      }
+    ),
   ];
 }
 

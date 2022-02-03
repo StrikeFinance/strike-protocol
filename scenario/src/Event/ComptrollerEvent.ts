@@ -308,6 +308,18 @@ async function setStrikeRate(world: World, from: string, comptroller: Comptrolle
   return world;
 }
 
+async function setStrikeSpeeds(world: World, from: string, comptroller: Comptroller, sTokens: SToken[], supplySpeeds: NumberV[], borrowSpeeds: NumberV[]): Promise<World> {
+  let invokation = await invoke(world, comptroller.methods._setStrikeSpeeds(sTokens.map(c => c._address), supplySpeeds.map(speed => speed.encode()), borrowSpeeds.map(speed => speed.encode())), from, ComptrollerErrorReporter);
+
+  world = addAction(
+    world,
+    `Comp speed for markets [${sTokens.map(c => c._address)}] set to supplySpeeds=[${supplySpeeds.map(speed => speed.show())}, borrowSpeeds=[${borrowSpeeds.map(speed => speed.show())}]`,
+    invokation
+  );
+
+  return world;
+}
+
 async function printLiquidity(world: World, comptroller: Comptroller): Promise<World> {
   let enterEvents = await getPastEvents(world, comptroller, 'StdComptroller', 'MarketEntered');
   let addresses = enterEvents.map((event) => event.returnValues['account']);
@@ -713,7 +725,7 @@ export function comptrollerCommands() {
     ),
 
     new Command<{comptroller: Comptroller, sToken: SToken, speed: NumberV}>(`
-      #### SetStrikeSpeed
+      #### SetStrikeSpeed (deprecated)
       * "Comptroller SetStrikeSpeed <sToken> <rate> " - Sets STRK speed for market
       * E.g. "Comptroller SetStrikeSpeed sToken 10000
       `,
@@ -724,6 +736,21 @@ export function comptrollerCommands() {
         new Arg("speed", getNumberV)
       ],
       (world, from, { comptroller, sToken, speed }) => setStrikeSpeed(world, from, comptroller, sToken, speed)
+    ),
+
+    new Command<{comptroller: Comptroller, sTokens: SToken[], supplySpeeds: NumberV[], borrowSpeeds: NumberV[]}>(`
+      #### SetStrikeSpeeds
+      * "Comptroller SetStrikeSpeeds (<sToken> ...) (<supplySpeed> ...) (<borrowSpeed> ...)" - Sets STRK speeds for markets
+      * E.g. "Comptroller SetStrikeSpeeds (sZRX sBAT) (1000 0) (1000 2000)
+      `,
+      "SetStrikeSpeeds",
+      [
+        new Arg("comptroller", getComptroller, {implicit: true}),
+        new Arg("sTokens", getSTokenV, {mapped: true}),
+        new Arg("supplySpeeds", getNumberV, {mapped: true}),
+        new Arg("borrowSpeeds", getNumberV, {mapped: true})
+      ],
+      (world, from, {comptroller, sTokens, supplySpeeds, borrowSpeeds}) => setStrikeSpeeds(world, from, comptroller, sTokens, supplySpeeds, borrowSpeeds)
     ),
     
     new Command<{comptroller: Comptroller, holder: AddressV}>(`
