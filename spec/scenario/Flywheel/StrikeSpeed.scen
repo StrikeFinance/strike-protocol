@@ -37,10 +37,31 @@ Macro InitSpeeds
     Mint Coburn 6e18 sBAT--tokenbalance = 6e18 / 2e9 = 3e9
     EnterMarkets Coburn sBAT
     Borrow Coburn 1e18 sZRX
-    Comptroller SetStrikeSpeed sZRX 1
-    Comptroller SetStrikeSpeed sBAT 1
+    Comptroller SetStrikeSpeeds (sZRX sBAT) (1 1) (1 1)
     -- Comptroller RefreshStrikeSpeeds
     -- Comptroller Send "setSTRKAddress(address)" (Address STRK)
+
+Macro ClaimStrikeForAll
+    Comptroller ClaimStrike Geoff
+
+Macro VerifyStrikeSpeeds sToken supplySpeed borrowSpeed
+    Assert Equal (Comptroller StrikeSupplySpeed sToken) supplySpeed
+    Assert Equal (Comptroller StrikeBorrowSpeed sToken) borrowSpeed
+
+Macro SetAndVerifyStrikeSpeeds sToken supplySpeed borrowSpeed
+    Comptroller SetStrikeSpeeds (sToken) ((Number supplySpeed)) ((Number borrowSpeed))
+    VerifyStrikeSpeeds sToken supplySpeed borrowSpeed
+    MineBlock
+    ClaimStrikeForAll
+
+Test "Strike supply speed can be set"
+    StrikeSpeedComptroller
+    InitSpeeds
+    -- Baseline STRK amounts
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance (Address Comptroller)) 5000000e18
+    SetAndVerifyStrikeSpeeds sZRX 2e18 0e18
 
 Test "STRK speed can be set per market"
     StrikeSpeedComptroller
@@ -50,19 +71,19 @@ Test "STRK speed can be set per market"
     Assert Equal (Erc20 STRK TokenBalance Geoff) 0
     Assert Equal (Erc20 STRK TokenBalance (Address Comptroller)) 5000000e18
     -- Reset the Strike speed
-    Comptroller SetStrikeSpeed sZRX 2
+    Comptroller SetStrikeSpeeds (sZRX) (2) (2)
     FastForward 1000 Blocks
     Comptroller ClaimStrike Geoff
     Assert Equal (Comptroller StrikeAccrued Geoff) 0
     Assert Equal (Erc20 STRK TokenBalance Geoff) 2000
     -- Change the Strike speed
-    Comptroller SetStrikeSpeed sZRX 4
+    Comptroller SetStrikeSpeeds (sZRX) (4) (4)
     FastForward 1000 Blocks
     Comptroller ClaimStrike Geoff
     Assert Equal (Comptroller StrikeAccrued Geoff) 0
     Assert Equal (Erc20 STRK TokenBalance Geoff) 6000
     -- Remove the Strike speed
-    Comptroller SetStrikeSpeed sZRX 0
+    Comptroller SetStrikeSpeeds (sZRX) (0) (0)
     FastForward 1000 Blocks
     Comptroller ClaimStrike Geoff
     Assert Equal (Comptroller StrikeAccrued Geoff) 0
@@ -71,7 +92,7 @@ Test "STRK speed can be set per market"
 Test "STRK is not claimed automatically"
     StrikeSpeedComptroller
     InitSpeeds
-    Comptroller SetStrikeSpeed sZRX 2
+    Comptroller SetStrikeSpeeds (sZRX) (2) (2)
     FastForward 100000 Blocks
     -- Check STRK is not claimed automatically
     Mint Geoff 50e18 sZRX
@@ -79,3 +100,34 @@ Test "STRK is not claimed automatically"
     -- Confirm there was STRK to claim
     Comptroller ClaimStrike Geoff
     Assert Equal (Erc20 STRK TokenBalance Geoff) 200000
+
+Test "STRK speed can be set per market v2"
+    StrikeSpeedComptroller
+    InitSpeeds
+    -- Baseline STRK amounts
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance (Address Comptroller)) 5000000e18
+    -- Reset the Strike speed
+    Comptroller SetStrikeSpeeds (sZRX) (4) (4)
+    FastForward 1000 Blocks
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 4000
+    -- Change the Strike speed
+    Comptroller SetStrikeSpeeds (sZRX) (4) (4)
+    FastForward 1000 Blocks
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 8000
+    Comptroller SetStrikeSpeeds (sZRX) (0) (6)
+    FastForward 1000 Blocks
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 8000
+    -- Remove the Strike speed
+    Comptroller SetStrikeSpeeds (sZRX) (0) (0)
+    FastForward 1000 Blocks
+    Comptroller ClaimStrike Geoff
+    Assert Equal (Comptroller StrikeAccrued Geoff) 0
+    Assert Equal (Erc20 STRK TokenBalance Geoff) 8000

@@ -41,10 +41,7 @@ Macro InitSpeeds
     Mint Coburn 6e18 sBAT--tokenbalance = 6e18 / 2e9 = 3e9
     EnterMarkets Coburn sBAT
     Borrow Coburn 1e18 sZRX
-    Comptroller SetStrikeSpeed sZRX 1
-    Comptroller SetStrikeSpeed sBAT 1
-    -- Comptroller RefreshStrikeSpeeds
-    -- Comptroller Send "setSTRKAddress(address)" (Address STRK)
+    Comptroller SetStrikeSpeeds (sZRX sBAT) (1 1) (1 1)
 
 Test "STRK could be granted with liquidity rewards"
     StrikeGrantComptroller

@@ -45,3 +45,6 @@ junit.xml
 contracts/artifacts/*
 artifacts/
 cache/
+
+script/saddle/deployProject.js
+.ethereum/

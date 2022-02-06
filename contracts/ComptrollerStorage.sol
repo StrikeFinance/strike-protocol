@@ -135,3 +135,11 @@ contract ComptrollerV4Storage is ComptrollerV3Storage {
     /// @notice Last block at which a contributor's STRK rewards have been allocated
     mapping(address => uint) public lastContributorBlock;
 }
+
+contract ComptrollerV5Storage is ComptrollerV4Storage {
+    /// @notice The rate at which strike is distributed to the corresponding borrow market (per block)
+    mapping(address => uint) public strikeBorrowSpeeds;
+
+    /// @notice The rate at which strike is distributed to the corresponding supply market (per block)
+    mapping(address => uint) public strikeSupplySpeeds;
+}
