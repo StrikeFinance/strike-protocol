@@ -1322,10 +1322,6 @@ contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerE
                     distributeSupplierStrike(address(sToken), holders[j]);
                 }
             }
-
-            for (uint j = 0; j < holders.length; j++) {
-                strikeAccrued[holders[j]] = grantSTRKInternal(holders[j], strikeAccrued[holders[j]]);
-            }
         }
         
         for (uint j = 0; j < holders.length; j++) {
