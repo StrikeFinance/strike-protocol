@@ -1,6 +1,7 @@
 const {
   etherGasCost,
-  etherUnsigned
+  etherUnsigned,
+  etherExp,
 } = require('../Utils/Ethereum');
 
 const {
@@ -13,9 +14,8 @@ const {
   preApprove
 } = require('../Utils/Strike');
 
-const repayAmount = etherUnsigned(10e2);
-const seizeAmount = repayAmount;
-const seizeTokens = seizeAmount.mul(4); // forced
+const repayAmount = etherExp(10);
+const seizeTokens = repayAmount.mul(4); // forced
 
 async function preLiquidate(sToken, liquidator, borrower, repayAmount, sTokenCollateral) {
   // setup for success in liquidating
@@ -30,6 +30,7 @@ async function preLiquidate(sToken, liquidator, borrower, repayAmount, sTokenCol
   await send(sToken.interestRateModel, 'setFailBorrowRate', [false]);
   await send(sTokenCollateral.interestRateModel, 'setFailBorrowRate', [false]);
   await send(sTokenCollateral.comptroller, 'setCalculatedSeizeTokens', [seizeTokens]);
+  await send(cTokenCollateral, 'harnessSetTotalSupply', [etherExp(10)]);
   await setBalance(sTokenCollateral, liquidator, 0);
   await setBalance(sTokenCollateral, borrower, seizeTokens);
   await pretendBorrow(sTokenCollateral, borrower, 0, 1, 0);
@@ -56,10 +57,19 @@ describe('SToken', function () {
   let root, liquidator, borrower, accounts;
   let sToken, sTokenCollateral;
 
+  const protocolSeizeShareMantissa = 5e16; // 5%
+  const exchangeRate = etherExp(.2);
+
+  const protocolShareTokens = seizeTokens.mul(protocolSeizeShareMantissa).div(etherExp(1));
+  const liquidatorShareTokens = seizeTokens.sub(protocolShareTokens);
+
+  const addReservesAmount = protocolShareTokens.mul(exchangeRate).div(etherExp(1));
+
   beforeEach(async () => {
     [root, liquidator, borrower, ...accounts] = saddle.accounts;
     sToken = await makeSToken({comptrollerOpts: {kind: 'bool'}});
     sTokenCollateral = await makeSToken({comptroller: sToken.comptroller});
+    expect(await send(cTokenCollateral, 'harnessSetExchangeRate', [exchangeRate])).toSucceed();
   });
 
   beforeEach(async () => {
@@ -163,9 +173,11 @@ describe('SToken', function () {
         [sToken, 'cash', repayAmount],
         [sToken, 'borrows', -repayAmount],
         [sToken, liquidator, 'cash', -repayAmount],
-        [sTokenCollateral, liquidator, 'tokens', seizeTokens],
+        [sTokenCollateral, liquidator, 'tokens', liquidatorShareTokens],
         [sToken, borrower, 'borrows', -repayAmount],
-        [sTokenCollateral, borrower, 'tokens', -seizeTokens]
+        [sTokenCollateral, borrower, 'tokens', -seizeTokens],
+        [sTokenCollateral, sTokenCollateral._address, 'reserves', addReservesAmount],
+        [sTokenCollateral, sTokenCollateral._address, 'tokens', -protocolShareTokens]
       ]));
     });
   });
@@ -197,9 +209,11 @@ describe('SToken', function () {
         [sToken, liquidator, 'eth', -gasCost],
         [sToken, liquidator, 'cash', -repayAmount],
         [sTokenCollateral, liquidator, 'eth', -gasCost],
-        [sTokenCollateral, liquidator, 'tokens', seizeTokens],
+        [sTokenCollateral, liquidator, 'tokens', liquidatorShareTokens],
+        [sTokenCollateral, sTokenCollateral._address, 'reserves', addReservesAmount],
         [sToken, borrower, 'borrows', -repayAmount],
-        [sTokenCollateral, borrower, 'tokens', -seizeTokens]
+        [sTokenCollateral, borrower, 'tokens', -seizeTokens],
+        [sTokenCollateral, sTokenCollateral._address, 'tokens', -protocolShareTokens], // total supply decreases
       ]));
     });
   });
@@ -232,9 +246,16 @@ describe('SToken', function () {
         to: liquidator,
         amount: seizeTokens.toString()
       });
+      expect(result).toHaveLog('ReservesAdded', {
+        benefactor: sTokenCollateral._address,
+        addAmount: addReservesAmount.toString(),
+        newTotalReserves: addReservesAmount.toString()
+      });
       expect(afterBalances).toEqual(await adjustBalances(beforeBalances, [
         [sTokenCollateral, liquidator, 'tokens', seizeTokens],
-        [sTokenCollateral, borrower, 'tokens', -seizeTokens]
+        [sTokenCollateral, borrower, 'tokens', -seizeTokens],
+        [sTokenCollateral, sTokenCollateral._address, 'reserves', addReservesAmount],
+        [sTokenCollateral, sTokenCollateral._address, 'tokens', -protocolShareTokens], // total supply decreases
       ]));
     });
   });

@@ -9,6 +9,8 @@ const {
   mergeInterface
 } = require('./Ethereum');
 
+function etherExp(num) { return etherMantissa(num, 1e18) }
+
 async function makeComptroller(opts = {}) {
   const {
     root = saddle.account,
@@ -442,7 +444,7 @@ module.exports = {
   makeInterestRateModel,
   makePriceOracle,
   makeToken,
-
+  etherExp,
   balanceOf,
   totalSupply,
   borrowSnapshot,
