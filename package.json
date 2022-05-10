@@ -18,7 +18,7 @@
   "author": "Strike Protocol",
   "license": "UNLICENSED",
   "devDependencies": {
-    "bignumber.js": "8.0.1",
+    "bignumber.js": "9.0.0",
     "jest-diff": "^24.9.0",
     "jest-junit": "^6.4.0",
     "solium": "^1.2.5",

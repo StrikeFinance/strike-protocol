@@ -46,5 +46,6 @@ Test "Able to seize tokens with a malicious listed sToken"
     Mint Geoff 50e18 sZRX
     Assert Equal (Erc20 sZRX TokenBalance Geoff) 50e9
     Expect Changes (Erc20 sZRX TokenBalance Geoff) -1e9
-    Expect Changes (Erc20 sZRX TokenBalance Torrey) +1e9
+    -- effective liquidation reward is 1-.028 = 0.972 after protocolSeizeShare (liq incentive = 1)
+    Expect Changes (Erc20 sZRX TokenBalance Torrey) +9.5e8
     EvilSeize sEVL 1e9 sZRX seizer:Torrey seizee:Geoff

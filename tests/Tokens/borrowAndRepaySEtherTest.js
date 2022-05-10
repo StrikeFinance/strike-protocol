@@ -128,6 +128,7 @@ describe('SEther', function () {
       const result = await borrowFresh(sToken, borrower, borrowAmount);
       const afterBalances = await getBalances([sToken], [borrower]);
       expect(result).toSucceed();
+      console.log(afterBalances)
       expect(afterBalances).toEqual(await adjustBalances(beforeBalances, [
         [sToken, 'eth', -borrowAmount],
         [sToken, 'borrows', borrowAmount],
