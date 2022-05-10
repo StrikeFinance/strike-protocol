@@ -8,6 +8,10 @@ const {
   etherUnsigned,
   mergeInterface
 } = require('./Ethereum');
+const BigNumber = require('bignumber.js');
+
+
+function etherExp(num) { return etherMantissa(num, 1e18) }
 
 async function makeComptroller(opts = {}) {
   const {
@@ -319,18 +323,18 @@ async function getBalances(sTokens, accounts) {
     const cBalances = balances[sToken._address] = {};
     for (let account of accounts) {
       cBalances[account] = {
-        eth: await etherBalance(account),
-        cash: sToken.underlying && await balanceOf(sToken.underlying, account),
-        tokens: await balanceOf(sToken, account),
-        borrows: (await borrowSnapshot(sToken, account)).principal
+        eth:  (await etherBalance(account)).toString(),
+        cash: sToken.underlying && await (await balanceOf(sToken.underlying, account)).toString(),
+        tokens:  (await balanceOf(sToken, account)).toString(),
+        borrows: (await borrowSnapshot(sToken, account)).principal.toString()
       };
     }
     cBalances[sToken._address] = {
-      eth: await etherBalance(sToken._address),
-      cash: sToken.underlying && await balanceOf(sToken.underlying, sToken._address),
-      tokens: await totalSupply(sToken),
-      borrows: await totalBorrows(sToken),
-      reserves: await totalReserves(sToken)
+      eth: (await etherBalance(sToken._address)).toString(),
+      cash: sToken.underlying && (await balanceOf(sToken.underlying, sToken._address)).toString(),
+      tokens: (await totalSupply(sToken)).toString(),
+      borrows: (await totalBorrows(sToken)).toString(),
+      reserves: (await totalReserves(sToken)).toString()
     };
   }
   return balances;
@@ -345,7 +349,7 @@ async function adjustBalances(balances, deltas) {
       ([sToken, key, diff] = delta);
       account = sToken._address;
     }
-    balances[sToken._address][account][key] = balances[sToken._address][account][key].add(diff);
+    balances[sToken._address][account][key] = (new BigNumber(balances[sToken._address][account][key]).plus(diff)).toString();
   }
   return balances;
 }
@@ -442,7 +446,7 @@ module.exports = {
   makeInterestRateModel,
   makePriceOracle,
   makeToken,
-
+  etherExp,
   balanceOf,
   totalSupply,
   borrowSnapshot,
