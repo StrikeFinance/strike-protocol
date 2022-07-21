@@ -4,6 +4,13 @@ import "./ComptrollerInterface.sol";
 import "./InterestRateModel.sol";
 
 contract STokenStorage {
+
+     //Swap token
+    address public uniswapRouterV2;
+    address public strike;
+    address public weth;
+   
+
     /**
      * @dev Guard variable for re-entrancy checks
      */
@@ -251,6 +258,7 @@ contract SErc20Storage {
      * @notice Underlying asset for this SToken
      */
     address public underlying;
+    
 }
 
 contract SErc20Interface is SErc20Storage {

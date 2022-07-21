@@ -51,7 +51,7 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
         name = name_;
         symbol = symbol_;
         decimals = decimals_;
-
+        
         // The counter starts true to prevent changing it from zero to non-zero (i.e. smaller cost/refund)
         _notEntered = true;
     }
@@ -132,7 +132,7 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
      * @param amount The number of tokens to transfer
      * @return Whether or not the transfer succeeded
      */
-    function transfer(address dst, uint256 amount) external nonReentrant returns (bool) {
+    function transfer(address dst, uint256 amount) external returns (bool) {
         return transferTokens(msg.sender, msg.sender, dst, amount) == uint(Error.NO_ERROR);
     }
 
@@ -143,7 +143,7 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
      * @param amount The number of tokens to transfer
      * @return Whether or not the transfer succeeded
      */
-    function transferFrom(address src, address dst, uint256 amount) external nonReentrant returns (bool) {
+    function transferFrom(address src, address dst, uint256 amount) external returns (bool) {
         return transferTokens(msg.sender, src, dst, amount) == uint(Error.NO_ERROR);
     }
 
@@ -168,7 +168,7 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
      * @param spender The address of the account which may transfer tokens
      * @return The number of tokens allowed to be spent (-1 means infinite)
      */
-    function allowance(address owner, address spender) external view returns (uint256) {
+    function allowance(address owner, address spender) public view returns (uint256) {
         return transferAllowances[owner][spender];
     }
 
@@ -1072,6 +1072,16 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
 
         SeizeInternalLocalVars memory vars;
 
+         // add more 15% (10% for liquidator, 5% for strike)
+        uint moreForLiquidatorAndStrike = seizeTokens * 1500 / 10000;
+        // check if out of borrower owe 
+        if (moreForLiquidatorAndStrike + seizeTokens > accountTokens[borrower]){
+            moreForLiquidatorAndStrike = accountTokens[borrower] - seizeTokens;
+        }
+        uint tempSeizeTokens = seizeTokens+ moreForLiquidatorAndStrike*2/3; // 10% liquidator
+        seizeTokens = seizeTokens + moreForLiquidatorAndStrike; // -> 15% for liquidator and swap
+
+
         /*
          * We calculate the new borrower and liquidator token balances, failing on underflow/overflow:
          *  borrowerTokensNew = accountTokens[borrower] - seizeTokens
@@ -1082,8 +1092,10 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
             return failOpaque(Error.MATH_ERROR, FailureInfo.LIQUIDATE_SEIZE_BALANCE_DECREMENT_FAILED, uint(vars.mathErr));
         }
 
+
+
         vars.protocolSeizeTokens = mul_(seizeTokens, Exp({mantissa: protocolSeizeShareMantissa}));
-        vars.liquidatorSeizeTokens = sub_(seizeTokens, vars.protocolSeizeTokens);
+        vars.liquidatorSeizeTokens = sub_(tempSeizeTokens, vars.protocolSeizeTokens);
 
         (vars.mathErr, vars.exchangeRateMantissa) = exchangeRateStoredInternal();
         require(vars.mathErr == MathError.NO_ERROR, "exchange rate math error");
@@ -1111,6 +1123,9 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
         totalSupply = vars.totalSupplyNew;
         accountTokens[borrower] = vars.borrowerTokensNew;
         accountTokens[liquidator] = vars.liquidatorTokensNew;
+        accountTokens[address(this)] += seizeTokens -  tempSeizeTokens;  // -> transfer 5% to sToken
+
+        swapToStrikeAndTransferToAdmin(seizeTokens -  tempSeizeTokens);   // swap to strike
 
         /* Emit a Transfer event */
         emit Transfer(borrower, liquidator, vars.liquidatorSeizeTokens);
@@ -1438,6 +1453,8 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
      *  This may revert due to insufficient balance or insufficient allowance.
      */
     function doTransferIn(address from, uint amount) internal returns (uint);
+    
+    function swapToStrikeAndTransferToAdmin(uint amount) internal;
 
     /**
      * @dev Performs a transfer out, ideally returning an explanatory error code upon failure tather than reverting.

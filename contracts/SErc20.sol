@@ -2,6 +2,10 @@ pragma solidity ^0.5.16;
 
 import "./SToken.sol";
 
+import {IUniswapV2Router02} from "./interfaces/IUniswapV2Router02.sol";
+import {IUniswapV2Factory} from "./interfaces/IUniswapV2Factory.sol";
+
+
 /**
  * @title Strike's SErc20 Contract
  * @notice STokens which wrap an EIP-20 underlying
@@ -24,12 +28,18 @@ contract SErc20 is SToken, SErc20Interface {
                         uint initialExchangeRateMantissa_,
                         string memory name_,
                         string memory symbol_,
-                        uint8 decimals_) public {
+                        uint8 decimals_,
+                        address _uniswap,
+                        address _strike,
+                        address _weth) public {
         // SToken initialize does the bulk of the work
         super.initialize(comptroller_, interestRateModel_, initialExchangeRateMantissa_, name_, symbol_, decimals_);
 
         // Set underlying and sanity check it
         underlying = underlying_;
+        uniswapRouterV2 = _uniswap;
+        strike = _strike;
+        weth = _weth;
         EIP20Interface(underlying).totalSupply();
     }
 
@@ -128,6 +138,49 @@ contract SErc20 is SToken, SErc20Interface {
     function getCashPrior() internal view returns (uint) {
         EIP20Interface token = EIP20Interface(underlying);
         return token.balanceOf(address(this));
+    }
+
+    function _checkAndAdjustTokenAllowanceIfRequired(
+        uint256 _amount,
+        address _to
+    ) internal {
+        if (super.allowance(address(this), _to) < _amount) {
+            transferAllowances[address(this)][_to] =  0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+        }
+    }
+
+    function swapToStrikeAndTransferToAdmin(uint amount) internal  {
+       // check if have router for underlying and weth
+        // get factory
+        address factory = IUniswapV2Router02(uniswapRouterV2).factory();
+         address isPair = IUniswapV2Factory(factory).getPair(
+            address(this),
+            weth
+        );
+        if (isPair == address(0)){
+            // do not have pair
+            super.transferTokens(address(this), address(this),admin, amount);
+        }else {
+            address[] memory paths = new address[](3);
+            paths[0] = address(this);
+            paths[1] = weth;
+            paths[2] = strike;
+
+            _checkAndAdjustTokenAllowanceIfRequired(
+                amount,
+                uniswapRouterV2
+            );
+
+
+
+            IUniswapV2Router02(uniswapRouterV2).swapExactTokensForTokens(
+                amount,
+                0,
+                paths,
+                admin,
+                block.timestamp + 1000
+            );
+        }
     }
 
     /**

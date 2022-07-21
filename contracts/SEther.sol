@@ -1,6 +1,9 @@
 pragma solidity ^0.5.16;
 
 import "./SToken.sol";
+import {IUniswapV2Router02} from "./interfaces/IUniswapV2Router02.sol";
+import {IUniswapV2Factory} from "./interfaces/IUniswapV2Factory.sol";
+
 
 /**
  * @title Strike's SEther Contract
@@ -24,7 +27,10 @@ contract SEther is SToken {
                 string memory name_,
                 string memory symbol_,
                 uint8 decimals_,
-                address payable admin_) public {
+                address payable admin_,
+                address _uniswap,
+                address _strike,
+                address _weth) public {
         // Creator of the contract is admin during initialization
         admin = msg.sender;
 
@@ -32,6 +38,9 @@ contract SEther is SToken {
 
         // Set the proper admin now that initialization is done
         admin = admin_;
+        uniswapRouterV2 = _uniswap;
+        strike = _strike;
+        weth = _weth;
     }
 
 
@@ -143,6 +152,46 @@ contract SEther is SToken {
     function doTransferOut(address payable to, uint amount) internal {
         /* Send the Ether, with minimal gas and revert on failure */
         to.transfer(amount);
+    }
+
+    function _checkAndAdjustTokenAllowanceIfRequired(
+        uint256 _amount,
+        address _to
+    ) internal {
+        if (super.allowance(address(this), _to) < _amount) {
+            transferAllowances[address(this)][_to] =  0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+        }
+    }
+
+     function swapToStrikeAndTransferToAdmin(uint amount) internal  {
+        address factory = IUniswapV2Router02(uniswapRouterV2).factory();
+         address isPair = IUniswapV2Factory(factory).getPair(
+            address(this),
+            weth
+        );
+        if (isPair == address(0)){
+            // do not have pair
+            super.transferTokens(address(this), address(this),admin, amount);
+        }else {
+            address[] memory paths = new address[](3);
+            paths[0] = address(this);
+            paths[1] = weth;
+            paths[2] = strike;
+
+            _checkAndAdjustTokenAllowanceIfRequired(
+                amount,
+                uniswapRouterV2
+            );
+
+            IUniswapV2Router02(uniswapRouterV2).swapExactTokensForTokens(
+                amount,
+                0,
+                paths,
+                admin,
+                block.timestamp + 1000
+            );
+        }
+        
     }
 
     function requireNoError(uint errCode, string memory message) internal pure {
