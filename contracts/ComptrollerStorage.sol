@@ -144,9 +144,3 @@ contract ComptrollerV5Storage is ComptrollerV4Storage {
     mapping(address => uint) public strikeSupplySpeeds;
 }
 
-contract ComptrollerV6Storage is ComptrollerV5Storage {
-    /**
-     * @notice Multiplier representing the discount on collateral that a liquidator receives
-     */
-    uint public adminSwappingIncentiveMantissa;
-}
