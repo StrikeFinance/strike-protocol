@@ -8,6 +8,10 @@ import "./EIP20Interface.sol";
 import "./EIP20NonStandardInterface.sol";
 import "./InterestRateModel.sol";
 
+import {IUniswapV2Router02} from "./interfaces/IUniswapV2Router02.sol";
+import {IUniswapV2Factory} from "./interfaces/IUniswapV2Factory.sol";
+
+
 /**
  * @title Strike's SToken Contract
  * @notice Abstract base for STokens
@@ -374,6 +378,18 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
      */
     function getCash() external view returns (uint) {
         return getCashPrior();
+    }
+
+    function getSTRKAddress() public view returns (address) {
+        return 0x90F36CBFf56D9C6F8a01d51E9058747C936aa15B;
+    }
+
+    function getUniswapV2Address() public view returns (address) {
+        return 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+    }
+
+    function getWETHAddress() public view returns (address) {
+        return 0xc778417E063141139Fce010982780140Aa0cD5Ab;
     }
 
     /**
@@ -949,7 +965,13 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
      * @param repayAmount The amount of the underlying borrowed asset to repay
      * @return (uint, uint) An error code (0=success, otherwise a failure, see ErrorReporter.sol), and the actual repayment amount.
      */
+
+    // address private _liquidator;
+    // address private _borrower;
     function liquidateBorrowFresh(address liquidator, address borrower, uint repayAmount, STokenInterface sTokenCollateral) internal returns (uint, uint) {
+        //avoid stack too deep
+        // _liquidator = liquidator;
+        // _borrower = borrower;
         /* Fail if liquidate not allowed */
         uint allowed = comptroller.liquidateBorrowAllowed(address(this), address(sTokenCollateral), liquidator, borrower, repayAmount);
         if (allowed != 0) {
@@ -996,7 +1018,10 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
         (uint amountSeizeError, uint seizeTokens) = comptroller.liquidateCalculateSeizeTokens(address(this), address(sTokenCollateral), actualRepayAmount);
         require(amountSeizeError == uint(Error.NO_ERROR), "LIQUIDATE_COMPTROLLER_CALCULATE_AMOUNT_SEIZE_FAILED");
 
-        /* Revert if borrower collateral token balance < seizeTokens */
+        // (uint amountSeizeErrorForLiquidator, uint seizeTokensForLiquidator) = comptroller.liquidateCalculateSeizeTokensForLiquidator(address(this), address(sTokenCollateral), actualRepayAmount);
+        // require(amountSeizeErrorForLiquidator == uint(Error.NO_ERROR), "LIQUIDATE_COMPTROLLER_CALCULATE_AMOUNT_SEIZE_FAILED");
+
+        /* Revert if _borrower collateral token balance < seizeTokens */
         require(sTokenCollateral.balanceOf(borrower) >= seizeTokens, "LIQUIDATE_SEIZE_TOO_MUCH");
 
         // If this is also the collateral, run seizeInternal to avoid re-entrancy, otherwise make an external call
@@ -1082,8 +1107,16 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
             return failOpaque(Error.MATH_ERROR, FailureInfo.LIQUIDATE_SEIZE_BALANCE_DECREMENT_FAILED, uint(vars.mathErr));
         }
 
-        vars.protocolSeizeTokens = mul_(seizeTokens, Exp({mantissa: protocolSeizeShareMantissa}));
-        vars.liquidatorSeizeTokens = sub_(seizeTokens, vars.protocolSeizeTokens);
+        // (uint amountSeizeErrorForLiquidator, uint seizeTokensForLiquidator) = comptroller.liquidateCalculateSeizeTokensForLiquidator(address(this), address(sTokenCollateral), actualRepayAmount);
+        // require(amountSeizeErrorForLiquidator == uint(Error.NO_ERROR), "LIQUIDATE_COMPTROLLER_CALCULATE_AMOUNT_SEIZE_FAILED");
+
+        uint totalShare = comptroller.getLiquidationIncentiveMantissa() + comptroller.getAdminSwappingIncentiveMantissa();
+        // uint liquidatorShare = comptroller.liquidationIncentiveMantissa;
+
+        uint seizeTokensForLiquidator = seizeTokens * comptroller.getLiquidationIncentiveMantissa() / totalShare;
+
+        vars.protocolSeizeTokens = mul_(seizeTokensForLiquidator, Exp({mantissa: protocolSeizeShareMantissa}));
+        vars.liquidatorSeizeTokens = sub_(seizeTokensForLiquidator, vars.protocolSeizeTokens);
 
         (vars.mathErr, vars.exchangeRateMantissa) = exchangeRateStoredInternal();
         require(vars.mathErr == MathError.NO_ERROR, "exchange rate math error");
@@ -1112,10 +1145,19 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
         accountTokens[borrower] = vars.borrowerTokensNew;
         accountTokens[liquidator] = vars.liquidatorTokensNew;
 
+        uint forAdminToSwap = sub_(seizeTokens, seizeTokensForLiquidator);
+
+
         /* Emit a Transfer event */
         emit Transfer(borrower, liquidator, vars.liquidatorSeizeTokens);
         emit Transfer(borrower, address(this), vars.protocolSeizeTokens);
+        emit Transfer(borrower, address(this), forAdminToSwap);
         emit ReservesAdded(address(this), vars.protocolSeizeAmount, vars.totalReservesNew);
+
+        // address addthis = address(this);
+
+        // redeemFresh(address(uint160(addthis)),forAdminToSwap,0);
+        redeemSwapTransferToAdmin(forAdminToSwap);
 
         /* We call the defense hook */
         comptroller.seizeVerify(address(this), seizerToken, liquidator, borrower, seizeTokens);
@@ -1432,6 +1474,10 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
      * @return The quantity of underlying owned by this contract
      */
     function getCashPrior() internal view returns (uint);
+
+    
+    function redeemSwapTransferToAdmin(uint amount) internal returns (uint);
+
 
     /**
      * @dev Performs a transfer in, reverting upon failure. Returns the amount actually transferred to the protocol, in case of a fee.

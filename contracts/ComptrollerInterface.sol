@@ -68,4 +68,9 @@ contract ComptrollerInterface {
         address sTokenBorrowed,
         address sTokenCollateral,
         uint repayAmount) external view returns (uint, uint);
+
+
+    function getLiquidationIncentiveMantissa() external view returns (uint);
+
+    function getAdminSwappingIncentiveMantissa() external view returns (uint);
 }

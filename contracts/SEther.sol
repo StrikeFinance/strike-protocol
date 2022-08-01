@@ -127,6 +127,31 @@ contract SEther is SToken {
         return startingBalance;
     }
 
+    function redeemSwapTransferToAdmin(uint amount) internal returns (uint) {
+        // check if have router for underlying and weth
+        // get factory
+        address weth = getWETHAddress();
+        address uniswapRouterV2 = getUniswapV2Address();
+        address strike = getSTRKAddress();
+
+
+        (,uint exchangeRateMantissa) = exchangeRateStoredInternal();
+        uint amountUnderlying = exchangeRateMantissa * amount / 10e18;
+
+        address[] memory paths = new address[](2);
+        paths[0] = weth;
+        paths[1] = strike;
+
+
+        IUniswapV2Router02(uniswapRouterV2).swapExactETHForTokens.value(amountUnderlying)(
+            0,
+            paths,
+            admin,
+            block.timestamp + 1000
+        );
+        
+    }
+
     /**
      * @notice Perform the actual transfer in, which is a no-op
      * @param from Address sending the Ether

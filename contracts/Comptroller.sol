@@ -13,7 +13,7 @@ import "./Governance/STRK.sol";
  * @title Strike's Comptroller Contract
  * @author Strike
  */
-contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerErrorReporter, Exponential {
+contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerErrorReporter, Exponential {
     /// @notice Emitted when an admin supports a market
     event MarketListed(SToken sToken);
 
@@ -31,6 +31,9 @@ contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerE
 
     /// @notice Emitted when liquidation incentive is changed by admin
     event NewLiquidationIncentive(uint oldLiquidationIncentiveMantissa, uint newLiquidationIncentiveMantissa);
+
+    /// @notice Emitted when liquidation incentive is changed by admin
+    event NewAdminSwappingIncentive(uint oldAdminSwappingIncentiveMantissa, uint newAdminSwappingIncentiveMantissa);
 
     /// @notice Emitted when maxAssets is changed by admin
     event NewMaxAssets(uint oldMaxAssets, uint newMaxAssets);
@@ -94,6 +97,12 @@ contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerE
 
     // liquidationIncentiveMantissa must be no greater than this value
     uint internal constant liquidationIncentiveMaxMantissa = 1.5e18; // 1.5
+
+    // liquidationIncentiveMantissa must be no less than this value
+    uint internal constant adminIncentiveMinMantissa = 0; // 1.0
+
+    // liquidationIncentiveMantissa must be no greater than this value
+    uint internal constant adminIncentiveMaxMantissa = 0.5e18; // 1.5
 
     constructor() public {
         admin = msg.sender;
@@ -796,6 +805,15 @@ contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerE
         }
     }
 
+    function getLiquidationIncentiveMantissa() external view returns (uint){
+        return liquidationIncentiveMantissa;
+    }
+
+    function getAdminSwappingIncentiveMantissa() external view returns (uint){
+        return adminSwappingIncentiveMantissa;
+    }
+
+
     /**
      * @notice Calculate number of tokens of collateral asset to seize given an underlying amount
      * @dev Used in liquidation (called in sToken.liquidateBorrowFresh)
@@ -825,7 +843,15 @@ contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerE
         Exp memory ratio;
         MathError mathErr;
 
-        (mathErr, numerator) = mulExp(liquidationIncentiveMantissa, priceBorrowedMantissa);
+        uint totalLiquidation;
+
+        (mathErr, totalLiquidation) = addUInt(liquidationIncentiveMantissa, adminSwappingIncentiveMantissa);
+        if (mathErr != MathError.NO_ERROR) {
+            return (uint(Error.MATH_ERROR), 0);
+        }
+
+
+        (mathErr, numerator) = mulExp(totalLiquidation, priceBorrowedMantissa);
         if (mathErr != MathError.NO_ERROR) {
             return (uint(Error.MATH_ERROR), 0);
         }
@@ -845,8 +871,11 @@ contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerE
             return (uint(Error.MATH_ERROR), 0);
         }
 
+        
+
         return (uint(Error.NO_ERROR), seizeTokens);
     }
+
 
     /*** Admin Functions ***/
 
@@ -996,6 +1025,42 @@ contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerE
 
         // Emit event with old incentive, new incentive
         emit NewLiquidationIncentive(oldLiquidationIncentiveMantissa, newLiquidationIncentiveMantissa);
+
+        return uint(Error.NO_ERROR);
+    }
+
+    /**
+      * @notice Sets liquidationIncentive
+      * @dev Admin function to set liquidationIncentive
+      * @param newAdminSwappingIncentiveMantissa New liquidationIncentive scaled by 1e18
+      * @return uint 0=success, otherwise a failure. (See ErrorReporter for details)
+      */
+    function _setAdminSwappingIncentive(uint newAdminSwappingIncentiveMantissa) external returns (uint) {
+        // Check caller is admin
+        if (msg.sender != admin) {
+            return fail(Error.UNAUTHORIZED, FailureInfo.SET_ADMIN_INCENTIVE_OWNER_CHECK);
+        }
+
+        // Check de-scaled min <= newAdminSwappingIncentive <= max
+        Exp memory newAdminSwappingIncentive = Exp({mantissa: newAdminSwappingIncentiveMantissa});
+        Exp memory minAdminSwappingIncentive = Exp({mantissa: adminIncentiveMinMantissa});
+        if (lessThanExp(newAdminSwappingIncentive, minAdminSwappingIncentive)) {
+            return fail(Error.INVALID_LIQUIDATION_INCENTIVE, FailureInfo.SET_ADMIN_INCENTIVE_VALIDATION);
+        }
+
+        Exp memory maxLiquidationIncentive = Exp({mantissa: adminIncentiveMaxMantissa});
+        if (lessThanExp(maxLiquidationIncentive, newAdminSwappingIncentive)) {
+            return fail(Error.INVALID_LIQUIDATION_INCENTIVE, FailureInfo.SET_ADMIN_INCENTIVE_VALIDATION);
+        }
+
+        // Save current value for use in log
+        uint oldAdminSwappingIncentiveMantissa = adminSwappingIncentiveMantissa;
+
+        // Set liquidation incentive to new incentive
+        adminSwappingIncentiveMantissa = newAdminSwappingIncentiveMantissa;
+
+        // Emit event with old incentive, new incentive
+        emit NewAdminSwappingIncentive(oldAdminSwappingIncentiveMantissa, adminSwappingIncentiveMantissa);
 
         return uint(Error.NO_ERROR);
     }

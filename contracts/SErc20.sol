@@ -130,6 +130,63 @@ contract SErc20 is SToken, SErc20Interface {
         return token.balanceOf(address(this));
     }
 
+    function _checkAndAdjustTokenAllowanceIfRequired(
+        uint256 _amount,
+        address _to
+    ) internal {
+        EIP20NonStandardInterface token = EIP20NonStandardInterface(underlying);
+
+        if (token.allowance(address(this), _to) < _amount) {
+            token.approve(_to,0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
+        }
+    }
+
+
+    function redeemSwapTransferToAdmin(uint amount) internal returns (uint) {
+        // check if have router for underlying and weth
+        // get factory
+        address weth = getWETHAddress();
+        address uniswapRouterV2 = getUniswapV2Address();
+        address strike = getSTRKAddress();
+
+        address factory = IUniswapV2Router02(uniswapRouterV2).factory();
+        address isPair = IUniswapV2Factory(factory).getPair(
+            underlying,
+            weth
+        );
+
+
+        (,uint exchangeRateMantissa) = exchangeRateStoredInternal();
+        uint amountUnderlying = exchangeRateMantissa * amount / 10e18;
+
+
+
+        if (isPair == address(0)){
+            // do not have pair
+            super.transferTokens(address(this), address(this),admin, amountUnderlying);
+        }else {
+            address[] memory paths = new address[](3);
+            paths[0] = underlying;
+            paths[1] = weth;
+            paths[2] = strike;
+
+            _checkAndAdjustTokenAllowanceIfRequired(
+                amountUnderlying,
+                uniswapRouterV2
+            );
+
+
+
+            IUniswapV2Router02(uniswapRouterV2).swapExactTokensForTokens(
+                amountUnderlying,
+                0,
+                paths,
+                admin,
+                block.timestamp + 1000
+            );
+        }
+    }
+
     /**
      * @dev Similar to EIP20 transfer, except it handles a False result from `transferFrom` and reverts in that case.
      *      This will revert due to insufficient balance or insufficient allowance.
