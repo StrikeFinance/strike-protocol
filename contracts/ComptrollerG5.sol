@@ -13,7 +13,7 @@ import "./Governance/STRK.sol";
  * @title Strike's Comptroller Contract
  * @author Strike
  */
-contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerErrorReporter, Exponential {
+contract Comptroller is ComptrollerV5Storage, ComptrollerInterface, ComptrollerErrorReporter, Exponential {
     /// @notice Emitted when an admin supports a market
     event MarketListed(SToken sToken);
 
@@ -73,9 +73,6 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
 
     /// @notice Emitted when a new supply-side Strike speed is calculated for a market
     event StrikeSupplySpeedUpdated(SToken indexed sToken, uint newSpeed);
-
-    /// @notice Emitted when reserve guardian is changed
-    event NewReserveGuardian(address oldReserveGuardian, address newReserveGuardian, address oldReserveAddress, address newReserveAddress);
 
     /// @notice The threshold above which the flywheel transfers STRK, in wei
     uint public constant strikeClaimThreshold = 0.001e18;
@@ -1050,7 +1047,7 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
         }
 
         supplyState.block = borrowState.block = blockNumber;
-    }
+    }    
 
     function _addMarketInternal(address sToken) internal {
         for (uint i = 0; i < allMarkets.length; i ++) {
@@ -1117,24 +1114,6 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
         seizeGuardianPaused = state;
         emit ActionPaused("Seize", state);
         return state;
-    }
-
-    function _setReserveInfo(address payable newReserveGuardian, address payable newReserveAddress) external returns (uint) {
-        // Check caller is admin or reserveGuardian
-        if (!(msg.sender == admin || msg.sender == reserveGuardian)) {
-            return fail(Error.UNAUTHORIZED, FailureInfo.SET_RESERVE_GUARDIAN_OWNER_CHECK);
-        }
-
-        address payable oldReserveGuardian = reserveGuardian;
-        address payable oldReserveAddress = reserveAddress;
-
-        reserveGuardian = newReserveGuardian;
-        reserveAddress = newReserveAddress;
-
-        // Emit NewReserveGuardian(OldReserveGuardian, NewReserveGuardian, OldReserveAddress, NewReserveAddress)
-        emit NewReserveGuardian(oldReserveGuardian, newReserveGuardian, oldReserveAddress, newReserveAddress);
-
-        return uint(Error.NO_ERROR);
     }
 
     function _become(Unitroller unitroller) public {
@@ -1273,7 +1252,7 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
 
         Double memory deltaIndex = Double({mantissa: sub_(borrowIndex, borrowerIndex)});
         uint borrowerAmount = div_(SToken(sToken).borrowBalanceStored(borrower), marketBorrowIndex);
-
+        
         // Calculate strike accrued: sTokenAmount * accruedPerBorrowedUnit
         uint borrowerDelta = mul_(borrowerAmount, deltaIndex);
         uint borrowerAccrued = add_(strikeAccrued[borrower], borrowerDelta);
@@ -1344,7 +1323,7 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
                 }
             }
         }
-
+        
         for (uint j = 0; j < holders.length; j++) {
             strikeAccrued[holders[j]] = grantSTRKInternal(holders[j], strikeAccrued[holders[j]]);
         }

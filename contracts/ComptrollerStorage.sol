@@ -143,3 +143,11 @@ contract ComptrollerV5Storage is ComptrollerV4Storage {
     /// @notice The rate at which strike is distributed to the corresponding supply market (per block)
     mapping(address => uint) public strikeSupplySpeeds;
 }
+
+contract ComptrollerV6Storage is ComptrollerV5Storage {
+    /// @notice Reserve Guardian address
+    address payable public reserveGuardian;
+
+    /// @notice Reserve address
+    address payable public reserveAddress;
+}
