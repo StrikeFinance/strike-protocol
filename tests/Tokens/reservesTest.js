@@ -15,9 +15,11 @@ const cash = etherUnsigned(reserves.mul(2));
 const reduction = etherUnsigned(2e12);
 
 describe("SToken", function () {
-  let root, accounts;
+  let root, reserveGuardian, reserveAddress, accounts;
   beforeEach(async () => {
     [root, ...accounts] = saddle.accounts;
+    reserveGuardian = saddle.accounts[4];
+    reserveAddress = saddle.accounts[4];
   });
 
   describe("_setReserveFactorFresh", () => {
@@ -242,6 +244,130 @@ describe("SToken", function () {
       expect(await call(sToken, "totalReserves")).toEqualNumber(reserves);
       expect(await send(sToken, "harnessFastForward", [5])).toSucceed();
       expect(await send(sToken, "_reduceReserves", [reduction])).toSucceed();
+    });
+  });
+
+  describe("_transferReservesFresh", () => {
+    let sToken;
+    beforeEach(async () => {
+      sToken = await makeSToken();
+      expect(
+        await send(sToken, "harnessSetTotalReserves", [reserves])
+      ).toSucceed();
+      expect(
+        await send(sToken.underlying, "harnessSetBalance", [
+          sToken._address,
+          cash,
+        ])
+      ).toSucceed();
+    });
+
+    it("fails if called by non-admin", async () => {
+      expect(
+        await send(sToken, "harnessTransferReservesFresh", [reduction], {
+          from: accounts[0],
+        })
+      ).toHaveTokenFailure("UNAUTHORIZED", "TRANSFER_RESERVES_ADMIN_CHECK");
+      expect(await call(sToken, "totalReserves")).toEqualNumber(reserves);
+    });
+
+    it("fails if market not fresh", async () => {
+      expect(await send(sToken, "harnessFastForward", [5])).toSucceed();
+      expect(
+        await send(sToken, "harnessTransferReservesFresh", [reduction], {from: reserveGuardian})
+      ).toHaveTokenFailure("MARKET_NOT_FRESH", "TRANSFER_RESERVES_FRESH_CHECK");
+      expect(await call(sToken, "totalReserves")).toEqualNumber(reserves);
+    });
+
+    it("fails if amount exceeds reserves", async () => {
+      expect(
+        await send(sToken, "harnessTransferReservesFresh", [reserves.add(1)], {from: reserveGuardian})
+      ).toHaveTokenFailure("BAD_INPUT", "TRANSFER_RESERVES_VALIDATION");
+      expect(await call(sToken, "totalReserves")).toEqualNumber(reserves);
+    });
+
+    it("fails if amount exceeds available cash", async () => {
+      const cashLessThanReserves = reserves.sub(2);
+      await send(sToken.underlying, "harnessSetBalance", [
+        sToken._address,
+        cashLessThanReserves,
+      ]);
+      expect(
+        await send(sToken, "harnessTransferReservesFresh", [reserves], {from: reserveGuardian})
+      ).toHaveTokenFailure(
+        "TOKEN_INSUFFICIENT_CASH",
+        "TRANSFER_RESERVES_CASH_NOT_AVAILABLE"
+      );
+      expect(await call(sToken, "totalReserves")).toEqualNumber(reserves);
+    });
+
+    it("increases reserve address balance and reduces reserves on success", async () => {
+      const balance = etherUnsigned(
+        await call(sToken.underlying, "balanceOf", [reserveAddress])
+      );
+      expect(
+        await send(sToken, "harnessTransferReservesFresh", [reserves], {from: reserveGuardian})
+      ).toSucceed();
+      expect(await call(sToken.underlying, "balanceOf", [reserveAddress])).toEqualNumber(
+        balance.add(reserves)
+      );
+      expect(await call(sToken, "totalReserves")).toEqualNumber(0);
+    });
+
+    it("emits an event on success", async () => {
+      const result = await send(sToken, "harnessTransferReservesFresh", [
+        reserves,
+      ], {from: reserveGuardian});
+      expect(result).toHaveLog("TransferReserves", {
+        guardian: reserveGuardian,
+        reserveAddress: reserveAddress,
+        reduceAmount: reserves.toString(),
+        newTotalReserves: "0",
+      });
+    });
+  });
+
+  describe("_transferReserves", () => {
+    let sToken;
+    beforeEach(async () => {
+      sToken = await makeSToken();
+      await send(sToken.interestRateModel, "setFailBorrowRate", [false]);
+      expect(
+        await send(sToken, "harnessSetTotalReserves", [reserves])
+      ).toSucceed();
+      expect(
+        await send(sToken.underlying, "harnessSetBalance", [
+          sToken._address,
+          cash,
+        ])
+      ).toSucceed();
+    });
+
+    it("emits a reserve-reduction failure if interest accrual fails", async () => {
+      await send(sToken.interestRateModel, "setFailBorrowRate", [true]);
+      await fastForward(sToken, 1);
+      await expect(
+        send(sToken, "_transferReserves", [reduction], {from: reserveGuardian})
+      ).rejects.toRevert("revert INTEREST_RATE_MODEL_ERROR");
+    });
+
+    it("returns error from _transferReservesFresh without emitting any extra logs", async () => {
+      const { reply, receipt } = await both(
+        sToken,
+        "harnessTransferReservesFresh",
+        [reserves.add(1)], {from: reserveGuardian}
+      );
+      expect(reply).toHaveTokenError("BAD_INPUT");
+      expect(receipt).toHaveTokenFailure(
+        "BAD_INPUT",
+        "TRANSFER_RESERVES_VALIDATION"
+      );
+    });
+
+    it("returns success code from _transferReservesFresh and reduces the correct amount", async () => {
+      expect(await call(sToken, "totalReserves")).toEqualNumber(reserves);
+      expect(await send(sToken, "harnessFastForward", [5])).toSucceed();
+      expect(await send(sToken, "_transferReserves", [reduction], {from: reserveGuardian})).toSucceed();
     });
   });
 });

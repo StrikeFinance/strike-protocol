@@ -36,6 +36,7 @@ export interface STokenMethods {
   ): Sendable<number>;
   _addReserves(amount: encodedNumber): Sendable<number>;
   _reduceReserves(amount: encodedNumber): Sendable<number>;
+  _transferReserves(amount: encodedNumber): Sendable<number>;
   _setReserveFactor(reserveFactor: encodedNumber): Sendable<number>;
   _setInterestRateModel(address: string): Sendable<number>;
   _setComptroller(address: string): Sendable<number>;

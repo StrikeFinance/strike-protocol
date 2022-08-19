@@ -320,6 +320,24 @@ async function setStrikeSpeeds(world: World, from: string, comptroller: Comptrol
   return world;
 }
 
+async function setReserveInfo(
+  world: World,
+  from: string,
+  comptroller: Comptroller,
+  guardian: string,
+  address: string
+): Promise<World> {
+  let invokation = await invoke(world, comptroller.methods._setReserveInfo(guardian, address), from, ComptrollerErrorReporter);
+
+  world = addAction(
+    world,
+    `Set reserve info to guardian: ${guardian}, address: ${address}}`,
+    invokation
+  );
+
+  return world;
+}
+
 async function printLiquidity(world: World, comptroller: Comptroller): Promise<World> {
   let enterEvents = await getPastEvents(world, comptroller, 'StdComptroller', 'MarketEntered');
   let addresses = enterEvents.map((event) => event.returnValues['account']);
@@ -820,6 +838,21 @@ export function comptrollerCommands() {
         new Arg("rate", getNumberV)
       ],
       (world, from, {comptroller, rate}) => setStrikeRate(world, from, comptroller, rate)
+    ),
+
+    new Command<{comptroller: Comptroller, guardian: AddressV, address: AddressV}>(`
+      #### SetReserveInfo
+
+      * "Comptroller SetReserveInfo <guardian> <address>" - Sets SetReserve Info
+      * E.g. "Comptroller SetReserveInfo 0x.. 0x..
+      `,
+      "SetReserveInfo",
+      [
+        new Arg("comptroller", getComptroller, {implicit: true}),
+        new Arg("guardian", getAddressV),
+        new Arg("address", getAddressV)
+      ],
+      (world, from, {comptroller, guardian, address}) => setReserveInfo(world, from, comptroller, guardian.val, address.val)
     ),
   ];
 }

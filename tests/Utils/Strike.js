@@ -16,6 +16,8 @@ function etherExp(num) { return etherMantissa(num, 1e18) }
 async function makeComptroller(opts = {}) {
   const {
     root = saddle.account,
+    reserveGuardian = saddle.accounts[4],
+    reserveAddress = saddle.accounts[4],
     kind = 'unitroller'
   } = opts || {};
 
@@ -100,6 +102,8 @@ async function makeComptroller(opts = {}) {
     await send(unitroller, '_setPriceOracle', [priceOracle._address]);
     await send(unitroller, 'setSTRKAddress', [strk._address]); // harness only
     await send(unitroller, '_setStrikeRate', [strikeRate]);
+
+    await send(unitroller, '_setReserveInfo', [reserveGuardian, reserveAddress]);
 
     return Object.assign(unitroller, { priceOracle, strk });
   }

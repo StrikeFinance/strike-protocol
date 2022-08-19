@@ -253,6 +253,18 @@ async function reduceReserves(world: World, from: string, sToken: SToken, amount
   return world;
 }
 
+async function transferReserves(world: World, from: string, sToken: SToken, amount: NumberV): Promise<World> {
+  let invokation = await invoke(world, sToken.methods._transferReserves(amount.encode()), from, STokenErrorReporter);
+
+  world = addAction(
+    world,
+    `SToken ${sToken.name}: ${describeUser(world, from)} reduces reserves by ${amount.show()}`,
+    invokation
+  );
+
+  return world;
+}
+
 async function setReserveFactor(world: World, from: string, sToken: SToken, reserveFactor: NumberV): Promise<World> {
   let invokation = await invoke(world, sToken.methods._setReserveFactor(reserveFactor.encode()), from, STokenErrorReporter);
 
@@ -665,6 +677,20 @@ export function sTokenCommands() {
         new Arg("amount", getNumberV)
       ],
       (world, from, { sToken, amount }) => reduceReserves(world, from, sToken, amount),
+      { namePos: 1 }
+    ),
+    new Command<{ sToken: SToken, amount: NumberV }>(`
+        #### TransferReserves
+
+        * "SToken <sToken> TransferReserves amount:<Number>" - Transfer the reserves of the sToken
+          * E.g. "SToken sZRX TransferReserves 1.0e18"
+      `,
+      "TransferReserves",
+      [
+        new Arg("sToken", getSTokenV),
+        new Arg("amount", getNumberV)
+      ],
+      (world, from, { sToken, amount }) => transferReserves(world, from, sToken, amount),
       { namePos: 1 }
     ),
     new Command<{ sToken: SToken, amount: NumberV }>(`
