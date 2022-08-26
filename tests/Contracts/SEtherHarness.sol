@@ -123,6 +123,10 @@ contract SEtherHarness is SEther {
         return _reduceReservesFresh(amount);
     }
 
+    function harnessTransferReservesFresh(uint amount) public returns (uint) {
+        return _transferReservesFresh(amount);
+    }
+
     function harnessSetReserves(uint amount) public {
         totalReserves = amount;
     }

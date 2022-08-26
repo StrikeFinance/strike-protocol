@@ -200,6 +200,11 @@ contract STokenInterface is STokenStorage {
     event ReservesReduced(address admin, uint reduceAmount, uint newTotalReserves);
 
     /**
+     * @notice Event emitted when the reserves are transfered
+     */
+    event TransferReserves(address guardian, address reserveAddress, uint reduceAmount, uint newTotalReserves);
+
+    /**
      * @notice EIP20 Transfer event
      */
     event Transfer(address indexed from, address indexed to, uint amount);

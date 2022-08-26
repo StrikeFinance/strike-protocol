@@ -134,6 +134,10 @@ contract SErc20Harness is SErc20Immutable {
         return _reduceReservesFresh(amount);
     }
 
+    function harnessTransferReservesFresh(uint amount) public returns (uint) {
+        return _transferReservesFresh(amount);
+    }
+
     function harnessSetReserveFactorFresh(uint newReserveFactorMantissa) public returns (uint) {
         return _setReserveFactorFresh(newReserveFactorMantissa);
     }
@@ -355,6 +359,10 @@ contract SErc20DelegateHarness is SErc20Delegate {
 
     function harnessReduceReservesFresh(uint amount) public returns (uint) {
         return _reduceReservesFresh(amount);
+    }
+
+    function harnessTransferReservesFresh(uint amount) public returns (uint) {
+        return _transferReservesFresh(amount);
     }
 
     function harnessSetReserveFactorFresh(uint newReserveFactorMantissa) public returns (uint) {

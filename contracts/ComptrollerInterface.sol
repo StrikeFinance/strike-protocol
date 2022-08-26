@@ -69,3 +69,9 @@ contract ComptrollerInterface {
         address sTokenCollateral,
         uint repayAmount) external view returns (uint, uint);
 }
+
+interface IComptroller {
+    /*** Reserve Info ***/
+    function reserveGuardian() external view returns (address payable);
+    function reserveAddress() external view returns (address payable);
+}

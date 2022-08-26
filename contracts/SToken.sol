@@ -1373,6 +1373,70 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
     }
 
     /**
+     * @notice Accrues interest and reduces reserves by transferring to reserve
+     * @param reduceAmount Amount of reduction to reserves
+     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
+     */
+    function _transferReserves(uint reduceAmount) external nonReentrant returns (uint) {
+        uint error = accrueInterest();
+        if (error != uint(Error.NO_ERROR)) {
+            // accrueInterest emits logs on errors, but on top of that we want to log the fact that an attempted reduce reserves failed.
+            return fail(Error(error), FailureInfo.TRANSFER_RESERVES_ACCRUE_INTEREST_FAILED);
+        }
+        // _transferReservesFresh emits reserve-reduction-specific logs on errors, so we don't need to.
+        return _transferReservesFresh(reduceAmount);
+    }
+
+    /**
+     * @notice Reduces reserves by transferring to reserve
+     * @param reduceAmount Amount of reduction to reserves
+     * @dev Requires fresh interest accrual
+     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
+     */
+    function _transferReservesFresh(uint reduceAmount) internal returns (uint) {
+        // totalReserves - reduceAmount
+        uint totalReservesNew;
+
+        // Check caller is reserveGuardian
+        if (msg.sender != IComptroller(address(comptroller)).reserveGuardian()) {
+            return fail(Error.UNAUTHORIZED, FailureInfo.TRANSFER_RESERVES_ADMIN_CHECK);
+        }
+
+        // We fail gracefully unless market's block number equals current block number
+        if (accrualBlockNumber != getBlockNumber()) {
+            return fail(Error.MARKET_NOT_FRESH, FailureInfo.TRANSFER_RESERVES_FRESH_CHECK);
+        }
+
+        // Fail gracefully if protocol has insufficient underlying cash
+        if (getCashPrior() < reduceAmount) {
+            return fail(Error.TOKEN_INSUFFICIENT_CASH, FailureInfo.TRANSFER_RESERVES_CASH_NOT_AVAILABLE);
+        }
+
+        // Check reduceAmount ≤ reserves[n] (totalReserves)
+        if (reduceAmount > totalReserves) {
+            return fail(Error.BAD_INPUT, FailureInfo.TRANSFER_RESERVES_VALIDATION);
+        }
+
+        /////////////////////////
+        // EFFECTS & INTERACTIONS
+        // (No safe failures beyond this point)
+
+        totalReservesNew = totalReserves - reduceAmount;
+        // We checked reduceAmount <= totalReserves above, so this should never revert.
+        require(totalReservesNew <= totalReserves, "reduce reserves unexpected underflow");
+
+        // Store reserves[n+1] = reserves[n] - reduceAmount
+        totalReserves = totalReservesNew;
+
+        // doTransferOut reverts if anything goes wrong, since we can't be sure if side effects occurred.
+        doTransferOut(IComptroller(address(comptroller)).reserveAddress(), reduceAmount);
+
+        emit TransferReserves(IComptroller(address(comptroller)).reserveGuardian(), IComptroller(address(comptroller)).reserveAddress(), reduceAmount, totalReservesNew);
+
+        return uint(Error.NO_ERROR);
+    }
+
+    /**
      * @notice accrues interest and updates the interest rate model using _setInterestRateModelFresh
      * @dev Admin function to accrue interest and update the interest rate model
      * @param newInterestRateModel the new interest rate model to use
