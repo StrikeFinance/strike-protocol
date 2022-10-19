@@ -8,6 +8,7 @@ import "./ComptrollerInterface.sol";
 import "./ComptrollerStorage.sol";
 import "./Unitroller.sol";
 import "./Governance/STRK.sol";
+import "./Staking/IStrikeStaking.sol";
 
 /**
  * @title Strike's Comptroller Contract
@@ -76,6 +77,9 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
 
     /// @notice Emitted when reserve guardian is changed
     event NewReserveGuardian(address oldReserveGuardian, address newReserveGuardian, address oldReserveAddress, address newReserveAddress);
+
+    /// @notice Emitted when strk staking info is changed
+    event NewStrkStakingInfo(address oldStrkStaking, address newStrkStaking);
 
     /// @notice The threshold above which the flywheel transfers STRK, in wei
     uint public constant strikeClaimThreshold = 0.001e18;
@@ -1137,6 +1141,19 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
         return uint(Error.NO_ERROR);
     }
 
+    function _setStrkStakingInfo(address newStrkStaking) external returns (uint) {
+        require(msg.sender == admin, "only admin can set strk staking info");
+
+        address oldStrkStaking = strkStaking;
+
+        strkStaking = newStrkStaking;
+
+        // Emit NewStrkStakingInfo(OldStrkStaking, NewStrkStaking)
+        emit NewStrkStakingInfo(oldStrkStaking, newStrkStaking);
+
+        return uint(Error.NO_ERROR);
+    }
+
     function _become(Unitroller unitroller) public {
         require(msg.sender == unitroller.admin(), "only unitroller admin can change brains");
         require(unitroller._acceptImplementation() == 0, "change not authorized");
@@ -1351,18 +1368,27 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
     }
 
     /**
-     * @notice Transfer STRK to the user
-     * @dev Note: If there is not enough STRK, we do not perform the transfer all.
-     * @param user The address of the user to transfer STRK to
-     * @param amount The amount of STRK to (possibly) transfer
-     * @return The amount of STRK which was NOT transferred to the user
+     * @notice Transfer STRK to the strk staking
+     * @dev Note: If there is not enough STRK, we do not perform the transfer and staking all.
+     * @param user The address of the user who stake STRK
+     * @param amount The amount of STRK to (possibly) transfer and stake
+     * @return The amount of STRK which was NOT staked and transferred to the staking
      */
     function grantSTRKInternal(address user, uint amount) internal returns (uint) {
         STRK strk = STRK(getSTRKAddress());
-        uint strikeRemaining = strk.balanceOf(address(this));
-        if (amount > 0 && amount <= strikeRemaining) {
-            strk.transfer(user, amount);
-            return 0;
+        if (strkStaking != address(0)) {
+            uint strkRemaining = strk.balanceOf(address(this));
+            if (amount > 0 && amount <= strkRemaining) {
+                strk.transfer(strkStaking, amount);
+                IStrikeStaking(strkStaking).mint(user, amount);
+                return 0;
+            }
+        } else {
+            uint strkRemaining = strk.balanceOf(address(this));
+            if (amount > 0 && amount <= strkRemaining) {
+                strk.transfer(user, amount);
+                return 0;
+            }
         }
         return amount;
     }
