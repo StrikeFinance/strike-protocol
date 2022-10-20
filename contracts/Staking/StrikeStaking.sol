@@ -129,8 +129,6 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
         rewardTokens.push(_stakingToken);
         rewardData[_stakingToken].lastUpdateTime = block.timestamp;
         rewardData[_stakingToken].periodFinish = block.timestamp;
-
-        nftBoostRate = 100;
     }
 
     /* ========== ADMIN CONFIGURATION ========== */
