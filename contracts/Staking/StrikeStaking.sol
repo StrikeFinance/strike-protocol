@@ -10,11 +10,6 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
-interface INFTController {
-    function getBoostRate(address token, uint tokenId) external view returns (uint boostRate);
-    function isWhitelistedNFT(address token) external view returns (bool);
-}
-
 abstract contract Ownable is Context {
     address private _owner;
 
@@ -82,15 +77,14 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
     }
 
     IERC20 public stakingToken;
-    address public comptroller;
     address[] public rewardTokens;
     mapping(address => Reward) public rewardData;
 
     // Duration that rewards are streamed over
-    uint256 public constant rewardsDuration = 86400 * 7; // 1 week
+    uint256 public constant rewardsDuration = 86400 * 14; // 2 weeks
 
     // Duration of lock/earned penalty period
-    uint256 public constant lockDuration = rewardsDuration * 4; // 4 weeks
+    uint256 public constant lockDuration = rewardsDuration * 12; // 24 weeks
 
     // Addresses approved to call mint
     mapping(address => bool) public minters;
@@ -111,10 +105,6 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
     mapping(address => LockedBalance[]) private userLocks;
     mapping(address => LockedBalance[]) private userEarnings;
 
-    mapping(address => NFTSlot) private _depositedNFT;
-    INFTController public controller = INFTController(address(0));
-    uint256 public nftBoostRate;
-
     /* ========== CONSTRUCTOR ========== */
 
     constructor() {
@@ -123,7 +113,6 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
     function initialize(
         address owner,
         address _stakingToken,
-        address _comptroller,
         address[] memory _minters
     ) external {
         require(address(stakingToken) == address(0), "StrikeStaking:initialize: Already initialized");
@@ -131,7 +120,6 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
         initOwner(owner);
 
         stakingToken = IERC20(_stakingToken);
-        comptroller = _comptroller;
         for (uint256 i; i < _minters.length; i++) {
             minters[_minters[i]] = true;
             mintersArray.push(_minters[i]);
@@ -307,6 +295,7 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
     // Locked tokens cannot be withdrawn for lockDuration and are eligible to receive stakingReward rewards
     function stake(uint256 amount, bool lock) external nonReentrant updateReward(msg.sender) {
         require(amount > 0, "MultiFeeDistribution::stake: Cannot stake 0");
+        require(lock == true, "Only lock enabled");
         totalSupply = totalSupply.add(amount);
         Balances storage bal = balances[msg.sender];
         bal.total = bal.total.add(amount);
@@ -333,9 +322,6 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
     function mint(address user, uint256 amount) external updateReward(user) {
         require(minters[msg.sender], "MultiFeeDistribution::mint: Only minters allowed");
 
-        uint256 boost = amount.mul(getBoost(msg.sender)).div(nftBoostRate);
-        if (boost > 0) amount = amount.add(boost);
-
         totalSupply = totalSupply.add(amount);
         Balances storage bal = balances[user];
         bal.total = bal.total.add(amount);
@@ -349,7 +335,6 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
         } else {
             earnings[idx - 1].amount = earnings[idx - 1].amount.add(amount);
         }
-        stakingToken.transferFrom(comptroller, address(this), amount);
         emit Staked(user, amount);
     }
 
@@ -515,87 +500,6 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
         _;
     }
 
-    function getBoost(address _account) public view returns (uint256) {
-        if (address(controller) == address(0)) return 0;
-
-        NFTSlot memory slot = _depositedNFT[_account];
-        uint256 boost = 0;
-        for (uint256 i = 0; i < 3; i++) {
-            boost += controller.getBoostRate(slot.tokenAddress[i], slot.tokenId[i]);
-        }
-        return boost; // boosts from 0% onwards
-    }
-
-    function getSlots(address _account)
-        public
-        view
-        returns (
-            address,
-            address,
-            address
-        )
-    {
-        NFTSlot memory slot = _depositedNFT[_account];
-        return (slot.tokenAddress[0], slot.tokenAddress[1], slot.tokenAddress[2]);
-    }
-
-    function getTokenIds(address _account)
-        public
-        view
-        returns (
-            uint256,
-            uint256,
-            uint256
-        )
-    {
-        NFTSlot memory slot = _depositedNFT[_account];
-        return (slot.tokenId[0], slot.tokenId[1], slot.tokenId[2]);
-    }
-
-    function depositNFT(
-        address _nft,
-        uint256 _tokenId,
-        uint256 _slotIndex
-    ) public {
-        require(controller.isWhitelistedNFT(_nft), "only approved NFTs");
-
-        IERC721(_nft).transferFrom(msg.sender, address(this), _tokenId);
-
-        NFTSlot memory slot = _depositedNFT[msg.sender];
-        require(slot.tokenAddress[_slotIndex] == address(0), "Already deposited this slot");
-        slot.tokenAddress[_slotIndex] = _nft;
-        slot.tokenId[_slotIndex] = _tokenId;
-
-        _depositedNFT[msg.sender] = slot;
-
-        emit DepositNFT(_nft, _tokenId);
-    }
-
-    function withdrawNFT(uint256 _slotIndex) public {
-        NFTSlot storage slot = _depositedNFT[msg.sender];
-
-        address _nft = slot.tokenAddress[_slotIndex];
-        uint256 _tokenId = slot.tokenId[_slotIndex];
-
-        require(_nft != address(0), "NFT does not exist");
-        IERC721(_nft).transferFrom(address(this), msg.sender, _tokenId);
-
-        slot.tokenAddress[_slotIndex] = address(0);
-
-        emit WithdrawNFT(_nft, _slotIndex);
-    }
-
-    function setNftController(address _controller) public onlyOwner {
-        controller = INFTController(_controller);
-        emit UpdateNFTController(msg.sender, _controller);
-    }
-
-    function setNftBoostRate(uint256 _rate) public onlyOwner {
-        require(_rate >= 100, "boost must be within range");
-        nftBoostRate = _rate;
-        emit UpdateNFTBoostRate(msg.sender, _rate);
-    }
-
     /* ========== EVENTS ========== */
 
     event RewardAdded(uint256 reward);
@@ -605,8 +509,4 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, address indexed rewardsToken, uint256 reward);
     event Recovered(address token, uint256 amount);
-    event DepositNFT(address _nft, uint256 _tokenId);
-    event WithdrawNFT(address _nft, uint256 _tokenId);
-    event UpdateNFTController(address indexed user, address controller);
-    event UpdateNFTBoostRate(address indexed user, uint256 controller);
 }
