@@ -8,7 +8,6 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 abstract contract Ownable is Context {
     address private _owner;
@@ -70,10 +69,6 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
     struct RewardData {
         address token;
         uint256 amount;
-    }
-    struct NFTSlot {
-        address[3] tokenAddress;
-        uint256[3] tokenId;
     }
 
     IERC20 public stakingToken;
