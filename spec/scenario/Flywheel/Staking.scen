@@ -24,6 +24,10 @@ Macro StrikeSpeedComptroller price=1.0 borrowRate=0.000005 strikeInitAmount=5000
     ComptrollerImpl ComptrollerScenG3 BecomeG3 1e18 [sZRX sBAT]
     Erc20 Deploy Standard STRK "STRK Token" 18
     Give (Address Comptroller) strikeInitAmount STRK
+    --g4
+    ComptrollerImpl Deploy ScenarioG4 ComptrollerG4
+    Unitroller SetPendingImpl ComptrollerG4
+    ComptrollerImpl ComptrollerG4 BecomeG4
     -- current
     ComptrollerImpl Deploy Scenario ComptrollerScen
     Unitroller SetPendingImpl ComptrollerScen
@@ -31,6 +35,7 @@ Macro StrikeSpeedComptroller price=1.0 borrowRate=0.000005 strikeInitAmount=5000
     Comptroller Send "setSTRKAddress(address)" (Address STRK)
 
 Macro StrikeSpeedComptrollerWithStaking
+    StrikeSpeedComptroller
     Comptroller SetStrkStakingInfo Jared
 
 Macro InitSpeeds

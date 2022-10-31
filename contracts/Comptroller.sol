@@ -1452,20 +1452,6 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
     }
 
     /**
-     * @notice Set the amount of STRK distributed per block
-     * @param strikeRate_ The amount of STRK wei per block to distribute
-     */
-    function _setStrikeRate(uint strikeRate_) public {
-        require(adminOrInitializing(), "only admin can change strike rate");
-
-        uint oldRate = strikeRate;
-        strikeRate = strikeRate_;
-        emit NewStrikeRate(oldRate, strikeRate_);
-
-        // refreshStrikeSpeedsInternal();
-    }
-
-    /**
      * @notice Remove a market from strikeMarkets, preventing it from earning STRK in the flywheel
      * @param sToken The address of the market to drop
      */
