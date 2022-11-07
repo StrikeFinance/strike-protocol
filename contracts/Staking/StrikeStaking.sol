@@ -81,6 +81,9 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
     // Duration of lock/earned penalty period
     uint256 public constant lockDuration = rewardsDuration * 12; // 24 weeks
 
+    // Duration of lock/earned group period
+    uint256 public constant groupDuration = 86400 * 7; // 1 weeks
+
     // Addresses approved to call mint
     mapping(address => bool) public minters;
     address[] public mintersArray;
@@ -264,8 +267,8 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
     // Final balance received and penalty balance paid by user upon calling exit
     function withdrawableBalance(address user) public view returns (uint256 amount, uint256 penaltyAmount) {
         Balances storage bal = balances[user];
+        uint256 amountWithoutPenalty;
         if (bal.earned > 0) {
-            uint256 amountWithoutPenalty;
             uint256 length = userEarnings[user].length;
             for (uint256 i = 0; i < length; i++) {
                 uint256 earnedAmount = userEarnings[user][i].amount;
@@ -278,7 +281,7 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
 
             penaltyAmount = bal.earned.sub(amountWithoutPenalty).div(2);
         }
-        amount = bal.unlocked.add(bal.earned).sub(penaltyAmount);
+        amount = bal.unlocked.add(amountWithoutPenalty).add(penaltyAmount);
         return (amount, penaltyAmount);
     }
 
@@ -295,7 +298,7 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
         if (lock) {
             lockedSupply = lockedSupply.add(amount);
             bal.locked = bal.locked.add(amount);
-            uint256 unlockTime = block.timestamp.div(86400).mul(86400).add(lockDuration);
+            uint256 unlockTime = block.timestamp.div(groupDuration).mul(groupDuration).add(lockDuration);
             uint256 idx = userLocks[msg.sender].length;
             if (idx == 0 || userLocks[msg.sender][idx - 1].unlockTime < unlockTime) {
                 userLocks[msg.sender].push(LockedBalance({amount: amount, unlockTime: unlockTime}));
@@ -319,7 +322,7 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
         Balances storage bal = balances[user];
         bal.total = bal.total.add(amount);
         bal.earned = bal.earned.add(amount);
-        uint256 unlockTime = block.timestamp.div(86400).mul(86400).add(lockDuration);
+        uint256 unlockTime = block.timestamp.div(groupDuration).mul(groupDuration).add(lockDuration);
         LockedBalance[] storage earnings = userEarnings[user];
         uint256 idx = earnings.length;
 
@@ -355,6 +358,11 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
                     bal.earned = bal.earned.sub(remaining);
                     if (bal.earned == 0) {
                         delete userEarnings[msg.sender];
+                        break;
+                    }
+                    if (bal.earned == 1) {
+                        delete userEarnings[msg.sender];
+                        penaltyAmount = penaltyAmount.add(1);
                         break;
                     }
                     remaining = remaining.mul(2);
