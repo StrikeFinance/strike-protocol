@@ -1,47 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.4;
+pragma solidity ^0.5.16;
 
-import "@openzeppelin/contracts/utils/Context.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/math/Math.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+pragma experimental ABIEncoderV2;
 
-abstract contract Ownable is Context {
-    address private _owner;
+import "../Lib/ownership/Ownable.sol";
+import "../Lib/utils/ReentrancyGuard.sol";
+import "../Lib/token/ERC20/IERC20.sol";
+import "../Lib/token/ERC20/SafeERC20.sol";
+import "../Lib/math/Math.sol";
+import "../Lib/math/SafeMath.sol";
 
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
-    constructor () {
-    }
-
-    function initOwner(address ownerAddr) internal {
-        _owner = ownerAddr;
-        emit OwnershipTransferred(address(0), ownerAddr);
-    }
-
-    function owner() public view returns (address) {
-        return _owner;
-    }
-
-    modifier onlyOwner() {
-        require(_owner == _msgSender(), "Ownable: caller is not the owner");
-        _;
-    }
-
-    function renounceOwnership() public virtual onlyOwner {
-        emit OwnershipTransferred(_owner, address(0));
-        _owner = address(0);
-    }
-
-    function transferOwnership(address newOwner) public virtual onlyOwner {
-        require(newOwner != address(0), "Ownable: new owner is the zero address");
-        emit OwnershipTransferred(_owner, newOwner);
-        _owner = newOwner;
-    }
-}
 
 // Based on EPS's & Geist's MultiFeeDistribution
 contract StrikeStaking is ReentrancyGuard, Ownable {
@@ -105,17 +74,17 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
 
     /* ========== CONSTRUCTOR ========== */
 
-    constructor() {
+    constructor() public {
     }
 
     function initialize(
-        address owner,
+        address _owner,
         address _stakingToken,
-        address[] memory _minters
+        address[] calldata _minters
     ) external {
         require(address(stakingToken) == address(0), "StrikeStaking:initialize: Already initialized");
 
-        initOwner(owner);
+        transferOwnership(_owner);
 
         stakingToken = IERC20(_stakingToken);
         for (uint256 i; i < _minters.length; i++) {
