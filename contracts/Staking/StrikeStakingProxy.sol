@@ -5,7 +5,7 @@ import "./StrikeStakingStorage.sol";
  * @title StrikeStakingProxy
  * @dev Storage for the strike staking is at this address, while execution is delegated to the `strikeStakingImplementation`.
  */
-contract StrikeStaking is StrikeStakingProxyAdminStorage {
+contract StrikeStakingProxy is StrikeStakingProxyAdminStorage {
 
     /**
       * @notice Emitted when pendingStrikeStakingImplementation is changed

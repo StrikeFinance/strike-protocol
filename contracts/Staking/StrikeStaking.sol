@@ -4,6 +4,7 @@ pragma solidity ^0.5.16;
 
 pragma experimental ABIEncoderV2;
 
+import "./StrikeStakingProxy.sol";
 import "../Lib/ownership/Ownable.sol";
 import "../Lib/utils/ReentrancyGuard.sol";
 import "../Lib/token/ERC20/IERC20.sol";
@@ -479,4 +480,9 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, address indexed rewardsToken, uint256 reward);
     event Recovered(address token, uint256 amount);
+
+    function _become(StrikeStakingProxy stakingProxy) public {
+        require(msg.sender == stakingProxy.admin(), "only staking proxy admin can change brains");
+        stakingProxy._acceptImplementation();
+    }
 }
