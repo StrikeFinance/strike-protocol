@@ -5,18 +5,25 @@ pragma solidity ^0.5.16;
 pragma experimental ABIEncoderV2;
 
 import "./StrikeStakingProxy.sol";
-import "../Lib/ownership/Ownable.sol";
-import "../Lib/utils/ReentrancyGuard.sol";
+import "../Lib/GSN/Context.sol";
 import "../Lib/token/ERC20/IERC20.sol";
 import "../Lib/token/ERC20/SafeERC20.sol";
 import "../Lib/math/Math.sol";
 import "../Lib/math/SafeMath.sol";
 
-
 // Based on EPS's & Geist's MultiFeeDistribution
-contract StrikeStaking is ReentrancyGuard, Ownable {
+contract StrikeStaking is StrikeStakingG1Storage {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
+
+    modifier onlyOwner() {
+        require(admin == msg.sender, "caller is not the admin");
+        _;
+    }
+
+    function owner() public view returns(address) {
+        return admin;
+    }
 
     /* ========== STATE VARIABLES ========== */
 
@@ -73,19 +80,41 @@ contract StrikeStaking is ReentrancyGuard, Ownable {
     mapping(address => LockedBalance[]) private userLocks;
     mapping(address => LockedBalance[]) private userEarnings;
 
+    bool private _notEntered;
+
+    /**
+     * @dev Prevents a contract from calling itself, directly or indirectly.
+     * Calling a `nonReentrant` function from another `nonReentrant`
+     * function is not supported. It is possible to prevent this from happening
+     * by making the `nonReentrant` function external, and make it call a
+     * `private` function that does the actual work.
+     */
+    modifier nonReentrant() {
+        // On the first call to nonReentrant, _notEntered will be true
+        require(_notEntered, "ReentrancyGuard: reentrant call");
+
+        // Any calls to nonReentrant after this point will fail
+        _notEntered = false;
+
+        _;
+
+        // By storing the original value once again, a refund is triggered (see
+        // https://eips.ethereum.org/EIPS/eip-2200)
+        _notEntered = true;
+    }
+
     /* ========== CONSTRUCTOR ========== */
 
     constructor() public {
     }
 
     function initialize(
-        address _owner,
         address _stakingToken,
         address[] calldata _minters
     ) external {
         require(address(stakingToken) == address(0), "StrikeStaking:initialize: Already initialized");
 
-        transferOwnership(_owner);
+        _notEntered = true;
 
         stakingToken = IERC20(_stakingToken);
         for (uint256 i; i < _minters.length; i++) {

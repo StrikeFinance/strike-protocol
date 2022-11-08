@@ -21,3 +21,6 @@ contract StrikeStakingProxyAdminStorage {
     */
     address public pendingStrikeStakingImplementation;
 }
+
+contract StrikeStakingG1Storage is StrikeStakingProxyAdminStorage {
+}
