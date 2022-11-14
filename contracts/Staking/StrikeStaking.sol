@@ -56,7 +56,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
     uint256 public constant rewardsDuration = 86400 * 14; // 2 weeks
 
     // Duration of lock/earned penalty period
-    uint256 public constant lockDuration = rewardsDuration * 12; // 24 weeks
+    uint256 public constant lockDuration = rewardsDuration * 6; // 12 weeks
 
     // Duration of lock/earned group period
     uint256 public constant groupDuration = 86400 * 7; // 1 weeks
