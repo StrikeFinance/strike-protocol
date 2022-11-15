@@ -19,7 +19,6 @@
   "author": "Strike Protocol",
   "license": "UNLICENSED",
   "devDependencies": {
-    "@openzeppelin/contracts": "^4.1.0",
     "bignumber.js": "9.0.0",
     "jest-diff": "^24.9.0",
     "jest-junit": "^6.4.0",
