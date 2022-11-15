@@ -109,6 +109,24 @@ async function makeComptroller(opts = {}) {
   }
 }
 
+async function makeStaking(opts = {}) {
+  const {
+    root = saddle.account,
+    kind = 'stakingProxy'
+  } = opts || {};
+
+  if (kind == 'stakingProxy') {
+    const stakingProxy = opts.unitroller || await deploy('StrikeStakingProxy');
+    const staking = await deploy('StrikeStakingHarness');
+    const strk = opts.strk || await deploy('STRK', [opts.strkOwner || root]);
+
+    await send(stakingProxy, '_setPendingImplementation', [staking._address]);
+    await send(staking, '_become', [stakingProxy._address]);
+    mergeInterface(stakingProxy, staking);
+    return Object.assign(stakingProxy, { strk });
+  }
+}
+
 async function makeSToken(opts = {}) {
   const {
     root = saddle.account,
@@ -446,6 +464,7 @@ async function pretendBorrow(sToken, borrower, accountIndex, marketIndex, princi
 
 module.exports = {
   makeComptroller,
+  makeStaking,
   makeSToken,
   makeInterestRateModel,
   makePriceOracle,

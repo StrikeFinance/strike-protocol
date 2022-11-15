@@ -70,4 +70,31 @@ contract ComptrollerScenario is Comptroller {
             setStrikeSpeedInternal(sToken, newSpeed, newSpeed);
         }
     }
+
+    /**
+     * @notice Transfer STRK to the strk staking
+     * @dev Note: If there is not enough STRK, we do not perform the transfer and staking all.
+     * @param user The address of the user who stake STRK
+     * @param amount The amount of STRK to (possibly) transfer and stake
+     * @return The amount of STRK which was NOT staked and transferred to the staking
+     */
+    function grantSTRKInternal(address user, uint amount) internal returns (uint) {
+        STRK strk = STRK(getSTRKAddress());
+        if (strkStaking != address(0)) {
+            uint strkRemaining = strk.balanceOf(address(this));
+            if (amount > 0 && amount <= strkRemaining) {
+                strk.transfer(strkStaking, amount);
+                // IStrikeStaking(strkStaking).mint(user, amount);
+                return 0;
+            }
+        } else {
+            uint strkRemaining = strk.balanceOf(address(this));
+            if (amount > 0 && amount <= strkRemaining) {
+                strk.transfer(user, amount);
+                return 0;
+            }
+        }
+        return amount;
+    }
+
 }

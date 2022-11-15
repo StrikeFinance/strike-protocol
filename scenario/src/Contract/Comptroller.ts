@@ -66,6 +66,7 @@ interface ComptrollerMethods {
   _setStrikeSpeed(sToken: string, encodedNumber): Sendable<void>
   _setStrikeSpeeds(cTokens: string[], supplySpeeds: encodedNumber[], borrowSpeeds: encodedNumber[]): Sendable<void>
   _setReserveInfo(guardian, address): Sendable<number>
+  _setStrkStakingInfo(address): Sendable<number>
 }
 
 export interface Comptroller extends Contract {

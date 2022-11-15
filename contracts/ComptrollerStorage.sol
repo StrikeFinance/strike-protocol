@@ -150,4 +150,7 @@ contract ComptrollerV6Storage is ComptrollerV5Storage {
 
     /// @notice Reserve address
     address payable public reserveAddress;
+
+    /// @notice STRK staking
+    address public strkStaking;
 }

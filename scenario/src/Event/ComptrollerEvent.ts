@@ -338,6 +338,24 @@ async function setReserveInfo(
   return world;
 }
 
+
+async function setStrkStakingInfo(
+  world: World,
+  from: string,
+  comptroller: Comptroller,
+  address: string
+): Promise<World> {
+  let invokation = await invoke(world, comptroller.methods._setStrkStakingInfo(address), from, ComptrollerErrorReporter);
+
+  world = addAction(
+    world,
+    `Set strk staking info to address: ${address}}`,
+    invokation
+  );
+
+  return world;
+}
+
 async function printLiquidity(world: World, comptroller: Comptroller): Promise<World> {
   let enterEvents = await getPastEvents(world, comptroller, 'StdComptroller', 'MarketEntered');
   let addresses = enterEvents.map((event) => event.returnValues['account']);
@@ -853,6 +871,20 @@ export function comptrollerCommands() {
         new Arg("address", getAddressV)
       ],
       (world, from, {comptroller, guardian, address}) => setReserveInfo(world, from, comptroller, guardian.val, address.val)
+    ),
+
+    new Command<{comptroller: Comptroller, address: AddressV}>(`
+      #### SetStrkStakingInfo
+
+      * "Comptroller SetStrkStakingInfo <address>" - Sets SetStrkStakingInfo
+      * E.g. "Comptroller SetStrkStakingInfo 0x..
+      `,
+      "SetStrkStakingInfo",
+      [
+        new Arg("comptroller", getComptroller, {implicit: true}),
+        new Arg("address", getAddressV)
+      ],
+      (world, from, {comptroller, address}) => setStrkStakingInfo(world, from, comptroller, address.val)
     ),
   ];
 }
