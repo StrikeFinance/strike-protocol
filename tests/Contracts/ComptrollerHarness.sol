@@ -78,6 +78,14 @@ contract ComptrollerHarness is Comptroller {
     }
 
     /**
+     * @notice Set the amount of STRK distributed per block
+     * @param strikeRate_ The amount of STRK wei per block to distribute
+     */
+    function harnessSetStrikeRate(uint strikeRate_) public {
+        strikeRate = strikeRate_;
+    }
+
+    /**
      * @notice Recalculate and update STRK speeds for all STRK markets
      */
     function harnessRefreshStrikeSpeeds() public {

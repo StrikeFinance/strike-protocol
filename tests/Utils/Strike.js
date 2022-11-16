@@ -101,7 +101,7 @@ async function makeComptroller(opts = {}) {
     await send(unitroller, '_setMaxAssets', [maxAssets]);
     await send(unitroller, '_setPriceOracle', [priceOracle._address]);
     await send(unitroller, 'setSTRKAddress', [strk._address]); // harness only
-    await send(unitroller, '_setStrikeRate', [strikeRate]);
+    await send(unitroller, "harnessSetStrikeRate", [strikeRate]);
 
     await send(unitroller, '_setReserveInfo', [reserveGuardian, reserveAddress]);
 
