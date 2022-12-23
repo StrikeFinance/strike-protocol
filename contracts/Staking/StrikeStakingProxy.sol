@@ -88,7 +88,7 @@ contract StrikeStakingProxy is StrikeStakingProxyAdminStorage {
       * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
       */
     function _acceptAdmin() public {
-        require(msg.sender == pendingAdmin && msg.sender == address(0), "ACCEPT_ADMIN_PENDING_ADMIN_CHECK");
+        require(msg.sender == pendingAdmin && msg.sender != address(0), "ACCEPT_ADMIN_PENDING_ADMIN_CHECK");
 
         // Save current values for inclusion in log
         address oldAdmin = admin;

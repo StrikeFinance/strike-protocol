@@ -83,6 +83,17 @@ contract StrikeStaking is StrikeStakingG1Storage {
     bool private _notEntered;
 
     /**
+      * @notice Emitted when pendingAdmin is changed
+      */
+    event NewPendingAdmin(address oldPendingAdmin, address newPendingAdmin);
+
+    /**
+      * @notice Emitted when pendingAdmin is accepted, which means admin is updated
+      */
+    event NewAdmin(address oldAdmin, address newAdmin);
+
+
+    /**
      * @dev Prevents a contract from calling itself, directly or indirectly.
      * Calling a `nonReentrant` function from another `nonReentrant`
      * function is not supported. It is possible to prevent this from happening
@@ -513,5 +524,27 @@ contract StrikeStaking is StrikeStakingG1Storage {
     function _become(StrikeStakingProxy stakingProxy) public {
         require(msg.sender == stakingProxy.admin(), "only staking proxy admin can change brains");
         stakingProxy._acceptImplementation();
+    }
+
+    /**
+      * @notice Accepts transfer of admin rights. msg.sender must be pendingAdmin
+      * @dev Admin function for pending admin to accept role and update admin
+      * @return uint 0=success, otherwise a failure
+      */
+    function _acceptAdminInImplementation() public {
+        require(msg.sender == pendingAdmin && msg.sender != address(0), "ACCEPT_ADMIN_PENDING_ADMIN_CHECK");
+
+        // Save current values for inclusion in log
+        address oldAdmin = admin;
+        address oldPendingAdmin = pendingAdmin;
+
+        // Store admin with value pendingAdmin
+        admin = pendingAdmin;
+
+        // Clear the pending value
+        pendingAdmin = address(0);
+
+        emit NewAdmin(oldAdmin, admin);
+        emit NewPendingAdmin(oldPendingAdmin, pendingAdmin);
     }
 }

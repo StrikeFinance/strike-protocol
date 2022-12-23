@@ -14,6 +14,8 @@ const {
   preApprove
 } = require('../Utils/Strike');
 
+const {address} = require('../Utils/Ethereum');
+
 async function strikeBalance(staking, user) {
   return etherUnsigned(await call(staking.strk, 'balanceOf', [user]))
 }
@@ -134,6 +136,47 @@ describe('Staking', () => {
       expect(withdrawableBalance.amount).toEqualNumber(estimatedLeftAmount);
       expect(withdrawableBalance.penaltyAmount).toEqualNumber(estimatedLeftPenaltyAmount);
 
+    });
+  });
+
+  describe('_acceptAdminInImplementation()', () => {
+    it('should fail when pending admin is zero', async () => {
+      await expect(send(staking, '_acceptAdminInImplementation')).rejects.toRevert('revert ACCEPT_ADMIN_PENDING_ADMIN_CHECK');
+
+      // Check admin stays the same
+      expect(await call(staking, 'admin')).toEqual(root);
+      expect(await call(staking, 'pendingAdmin')).toBeAddressZero();
+    });
+
+    it('should fail when called by another account (e.g. root)', async () => {
+      expect(await send(staking, '_setPendingAdmin', [accounts[0]])).toSucceed();
+      await expect(send(staking, '_acceptAdminInImplementation')).rejects.toRevert('revert ACCEPT_ADMIN_PENDING_ADMIN_CHECK');
+
+      // Check admin stays the same
+      expect(await call(staking, 'admin')).toEqual(root);
+      expect(await call(staking, 'pendingAdmin')).toEqual(accounts[0]);
+    });
+
+    it('should succeed and set admin and clear pending admin', async () => {
+      expect(await send(staking, '_setPendingAdmin', [accounts[0]])).toSucceed();
+      expect(await send(staking, '_acceptAdminInImplementation', [], {from: accounts[0]})).toSucceed();
+
+      // Check admin stays the same
+      expect(await call(staking, 'admin')).toEqual(accounts[0]);
+      expect(await call(staking, 'pendingAdmin')).toBeAddressZero();
+    });
+
+    it('should emit log on success', async () => {
+      expect(await send(staking, '_setPendingAdmin', [accounts[0]])).toSucceed();
+      const result = await send(staking, '_acceptAdminInImplementation', [], {from: accounts[0]});
+      expect(result).toHaveLog('NewAdmin', {
+        oldAdmin: root,
+        newAdmin: accounts[0],
+      });
+      expect(result).toHaveLog('NewPendingAdmin', {
+        oldPendingAdmin: accounts[0],
+        newPendingAdmin: address(0),
+      });
     });
   });
 });
