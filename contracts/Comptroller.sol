@@ -1363,7 +1363,7 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
         }
 
         for (uint j = 0; j < holders.length; j++) {
-            strikeAccrued[holders[j]] = grantSTRKInternal(holders[j], strikeAccrued[holders[j]]);
+            strikeAccrued[holders[j]] = stakeSTRKInternal(holders[j], strikeAccrued[holders[j]]);
         }
     }
 
@@ -1374,9 +1374,9 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
      * @param amount The amount of STRK to (possibly) transfer and stake
      * @return The amount of STRK which was NOT staked and transferred to the staking
      */
-    function grantSTRKInternal(address user, uint amount) internal returns (uint) {
-        STRK strk = STRK(getSTRKAddress());
+    function stakeSTRKInternal(address user, uint amount) internal returns (uint) {
         if (strkStaking != address(0)) {
+            STRK strk = STRK(getSTRKAddress());
             uint strkRemaining = strk.balanceOf(address(this));
             if (amount > 0 && amount <= strkRemaining) {
                 strk.transfer(strkStaking, amount);
@@ -1384,11 +1384,24 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
                 return 0;
             }
         } else {
-            uint strkRemaining = strk.balanceOf(address(this));
-            if (amount > 0 && amount <= strkRemaining) {
-                strk.transfer(user, amount);
-                return 0;
-            }
+            return grantSTRKInternal(user, amount);
+        }
+        return amount;
+    }
+
+    /**
+     * @notice Transfer STRK to the user
+     * @dev Note: If there is not enough STRK, we do not perform the transfer all.
+     * @param user The address of the user to transfer STRK to
+     * @param amount The amount of STRK to (possibly) transfer
+     * @return The amount of STRK which was NOT transferred to the user
+     */
+    function grantSTRKInternal(address user, uint amount) internal returns (uint) {
+        STRK strk = STRK(getSTRKAddress());
+        uint strikeRemaining = strk.balanceOf(address(this));
+        if (amount > 0 && amount <= strikeRemaining) {
+            strk.transfer(user, amount);
+            return 0;
         }
         return amount;
     }
