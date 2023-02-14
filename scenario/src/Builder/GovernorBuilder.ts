@@ -10,6 +10,7 @@ import { getContract } from "../Contract";
 
 const GovernorAlphaContract = getContract("GovernorAlpha");
 const GovernorAlphaHarnessContract = getContract("GovernorAlphaHarness");
+const GovernorAlpha2Contract = getContract("GovernorAlpha2");
 
 export interface GovernorData {
   invokation: Invokation<Governor>;
@@ -81,7 +82,37 @@ export async function buildGovernor(
           contract: "GovernorAlphaHarness"
         };
       }
-    )
+    ),
+    new Fetcher<
+      { name: StringV, timelock: AddressV, strk: AddressV, guardian: AddressV, latestProposalId: NumberV},
+      GovernorData
+    >(
+      `
+      #### GovernorAlpha2
+
+      * "Governor Deploy Alpha2 name:<String> timelock:<Address> strk:<Address> guardian:<Address> latestProposalId:<Number>" - Deploys Strike Governor Alpha2
+        * E.g. "Governor Deploy Alpha2 GovernorAlpha2 (Address Timelock) (Address STRK) Guardian 0"
+    `,
+      "Alpha2",
+      [
+        new Arg("name", getStringV),
+        new Arg("timelock", getAddressV),
+        new Arg("strk", getAddressV),
+        new Arg("guardian", getAddressV),
+        new Arg("latestProposalId", getNumberV)
+      ],
+      async (world, { name, timelock, strk, guardian, latestProposalId }) => {
+        return {
+          invokation: await GovernorAlpha2Contract.deploy<Governor>(
+            world,
+            from,
+            [timelock.val, strk.val, guardian.val, latestProposalId.val]
+          ),
+          name: name.val,
+          contract: "GovernorAlpha2"
+        };
+      }
+    ),
 
   ];
 
