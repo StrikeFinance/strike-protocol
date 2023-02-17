@@ -1,0 +1,52 @@
+Macro Enfranchise user amount
+    From Bank (STRK Transfer user amount)
+    From user (STRK Delegate user)
+
+Macro SucceedProposal
+    MineBlock
+    Governor LegitGov Proposal LastProposal Vote For
+    From Jared (Governor LegitGov Proposal LastProposal Vote For)
+    AdvanceBlocks 20000
+    Assert Equal ("Succeeded") (Governor LegitGov Proposal LastProposal State)
+
+Test "Execute proposal to withdraw ETH reserve"
+    NewComptroller
+    ListedEtherToken sETH initialExchangeRate:1e9
+    CallMintEth Geoff 50e18 sETH
+    Assert Equal (Erc20 sETH TokenBalance Geoff) (Exactly 500e8)
+    Assert Equal (SToken sETH UnderlyingBalance Geoff) (Exactly 50e18)
+    Assert Equal (SToken sETH ExchangeRate) (Exactly 1e9)
+    BorrowAndRepayEthWithInterest sETH 10e18 5e18 interestRate:0.000001 blocks:500000 reserveRate:0.2
+    -- We've accrued 10% interest for 5 blocks, or 50% of the amount,
+    --   thus, we should have accrued 5e18 of interest for the protocol
+    --   The reserves should get 20% of this, or 1e18, and the rest
+    --   is due pro-rata to all holders. We just have one, so
+    --   let's check that account is given correct new balance.
+    FreezeTime 90
+    Timelock Deploy Jared 604800
+    Assert Equal (EtherBalance sETH) (Exactly 55e18)
+    Assert Equal (EtherBalance (Timelock Address)) (Exactly 0e18)
+    Assert Equal (Erc20 sETH TokenBalance Geoff) (Exactly 500e8)
+    Assert Equal (SToken sETH Reserves) (Exactly 1e18)
+    Assert Equal (SToken sETH UnderlyingBalance Geoff) (Exactly 54e18)
+    -- (55.0e18+0.0e18-1.0e18)/500.0e8
+    Assert Equal (SToken sETH ExchangeRate) (Exactly 1.08e9)
+    -- Set Timelock as admin
+    From Root (SToken sETH SetPendingAdmin (Timelock Address))
+    From Jared (Timelock QueueTransaction (SToken sETH Address) 0 604900 "_acceptAdmin()" "")
+    FreezeTime 604900
+    From Jared (Timelock ExecuteTransaction (SToken sETH Address) 0 604900 "_acceptAdmin()" "")
+    STRK Deploy Bank
+    Enfranchise Root 200001e18
+    Enfranchise Jared 200000e18
+    Governor Deploy Alpha2 LegitGov (Address Timelock) (Address STRK) Guardian 0
+    Timelock SetAdmin (Address LegitGov)
+    -- Propose
+    Governor LegitGov Propose "Withdraw ETH reserve" [(Address sETH) (Address Coburn)] [0 1e18] ["_reduceReserves(uint256)" "call()"] [["1000000000000000000"] []]
+    SucceedProposal
+    Governor LegitGov Proposal LastProposal Queue
+    FreezeTime 1209801
+    Assert Equal (EtherBalance Coburn) (Exactly 100e18)
+    Governor LegitGov Proposal LastProposal Execute
+    Assert Equal ("Executed") (Governor LegitGov Proposal LastProposal State)
+    Assert Equal (EtherBalance Coburn) (Exactly 101e18)
