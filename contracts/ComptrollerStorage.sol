@@ -154,3 +154,11 @@ contract ComptrollerV6Storage is ComptrollerV5Storage {
     /// @notice STRK staking
     address public strkStaking;
 }
+
+contract ComptrollerV7Storage is ComptrollerV6Storage {
+    // @notice The supplyCapGuardian can set supplyCaps to any number for any market. Lowering the supply cap could disable supplying to the given market.
+    address public supplyCapGuardian;
+
+    // @notice Supply caps enforced by mintAllowed for each sToken address. Defaults to zero which corresponds to unlimited supplying.
+    mapping(address => uint) public supplyCaps;
+}
