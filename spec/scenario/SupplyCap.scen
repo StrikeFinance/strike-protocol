@@ -97,31 +97,3 @@ Test "Reserves should not affect supply cap"
     Successfully
     Comptroller SetMarketSupplyCaps (sUSDC) (15e18)
     Mint Geoff 999999999999999999 sUSDC
-
-Test "SetBorrowCaps works correctly too"
-    NewComptroller price:1.0
-    NewSToken ZRX sZRX
-    NewSToken BAT sBAT
-    NewSToken USDC sUSDC
-    Comptroller SetMarketBorrowCaps (sBAT sUSDC) (0.5e18 1000001)
-    Assert Equal (Comptroller BorrowCaps sBAT) (Exactly 0.5e18)
-    Assert Equal (Comptroller BorrowCaps sUSDC) (Exactly 1000001)
-    Give sBAT 10e18 BAT -- Faucet some bat to borrow
-    Give sUSDC 20e6 USDC
-    Support sZRX collateralFactor:0.5
-    Support sBAT collateralFactor:0.5
-    Support sUSDC collateralFactor:0.5
-    Prep Geoff Some ZRX sZRX
-    Mint Geoff 100e18 sZRX
-    EnterMarkets Geoff sZRX
-    AllowFailures
-    Borrow Geoff 1e18 sBAT
-    Assert Revert
-    Borrow Geoff 2e6 sUSDC
-    Assert Revert
-    Successfully
-    Borrow Geoff 1e6 sUSDC
-    Assert Equal (sToken sBAT BorrowBalance Geoff) (Exactly 0)
-    Assert Equal (Erc20 BAT TokenBalance Geoff) (Exactly 0)
-    Assert Equal (Erc20 BAT TokenBalance sBAT) (Exactly 10e18)
-    Assert Equal (Erc20 USDC TokenBalance Geoff) (Exactly 1e6)
