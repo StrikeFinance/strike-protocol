@@ -14,7 +14,7 @@ import "./Staking/IStrikeStaking.sol";
  * @title Strike's Comptroller Contract
  * @author Strike
  */
-contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerErrorReporter, Exponential {
+contract ComptrollerG6 is ComptrollerV6Storage, ComptrollerInterface, ComptrollerErrorReporter, Exponential {
     /// @notice Emitted when an admin supports a market
     event MarketListed(SToken sToken);
 
@@ -80,11 +80,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
     /// @notice Emitted when strk staking info is changed
     event NewStrkStakingInfo(address oldStrkStaking, address newStrkStaking);
-    /// @notice Emitted when supply cap for a sToken is changed
-    event NewSupplyCap(SToken indexed sToken, uint newSupplyCap);
-
-    /// @notice Emitted when supply cap guardian is changed
-    event NewSupplyCapGuardian(address oldSupplyCapGuardian, address newSupplyCapGuardian);
 
     /// @notice The threshold above which the flywheel transfers STRK, in wei
     uint public constant strikeClaimThreshold = 0.001e18;
@@ -267,20 +262,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
         if (!markets[sToken].isListed) {
             return uint(Error.MARKET_NOT_LISTED);
-        }
-
-        uint supplyCap = supplyCaps[sToken];
-        // Supply cap of 0 corresponds to unlimited supplying
-        if (supplyCap != 0) {
-            uint totalCash = SToken(sToken).getCash();
-            uint totalBorrows = SToken(sToken).totalBorrows();
-            uint totalReserves = SToken(sToken).totalReserves();
-            // totalSupplies = totalCash + totalBorrows - totalReserves
-            (MathError mathErr, uint totalSupplies) = addThenSubUInt(totalCash, totalBorrows, totalReserves);
-            require(mathErr == MathError.NO_ERROR, "totalSupplies failed");
-
-            uint nextTotalSupplies = add_(totalSupplies, mintAmount);
-            require(nextTotalSupplies < supplyCap, "market supply cap reached");
         }
 
         // Keep the flywheel moving
@@ -1171,43 +1152,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         emit NewStrkStakingInfo(oldStrkStaking, newStrkStaking);
 
         return uint(Error.NO_ERROR);
-    }
-
-    /**
-     * @notice Admin function to change the Supply Cap Guardian
-     * @param newSupplyCapGuardian The address of the new Supply Cap Guardian
-     */
-    function _setSupplyCapGuardian(address newSupplyCapGuardian) external {
-        require(msg.sender == admin, "only admin can set supply cap guardian");
-
-        // Save current value for inclusion in log
-        address oldSupplyCapGuardian = supplyCapGuardian;
-
-        // Store supplyCapGuardian with value newSupplyCapGuardian
-        supplyCapGuardian = newSupplyCapGuardian;
-
-        // Emit NewSupplyCapGuardian(OldSupplyCapGuardian, NewSupplyCapGuardian)
-        emit NewSupplyCapGuardian(oldSupplyCapGuardian, newSupplyCapGuardian);
-    }
-
-    /**
-      * @notice Set the given supply caps for the given sToken markets. Supplying that brings total supplys to or above supply cap will revert.
-      * @dev Admin or supplyCapGuardian function to set the supply caps. A supply cap of 0 corresponds to unlimited supplying.
-      * @param sTokens The addresses of the markets (tokens) to change the supply caps for
-      * @param newSupplyCaps The new supply cap values in underlying to be set. A value of 0 corresponds to unlimited supplying.
-      */
-    function _setMarketSupplyCaps(SToken[] calldata sTokens, uint[] calldata newSupplyCaps) external {
-        require(msg.sender == admin || msg.sender == supplyCapGuardian, "only admin or supply cap guardian can set supply caps");
-
-        uint numMarkets = sTokens.length;
-        uint numSupplyCaps = newSupplyCaps.length;
-
-        require(numMarkets != 0 && numMarkets == numSupplyCaps, "invalid input");
-
-        for (uint i = 0; i < numMarkets; i++) {
-            supplyCaps[address(sTokens[i])] = newSupplyCaps[i];
-            emit NewSupplyCap(sTokens[i], newSupplyCaps[i]);
-        }
     }
 
     function _become(Unitroller unitroller) public {
