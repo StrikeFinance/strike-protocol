@@ -98,8 +98,8 @@ Test "mint reverts if mint is paused"
     Invariant Static (Erc20 sZRX TotalSupply)
     Invariant Static (Erc20 ZRX TotalSupply)
     Comptroller SetPauseGuardian Coburn
-    From Coburn (Comptroller SetGuardianMarketPaused sZRX "Mint" True)
+    From Coburn (Comptroller SetProtocolPaused True)
     AllowFailures
     Mint Geoff 2e18 sZRX
-    Assert Revert "revert mint is paused"
-    Comptroller SetGuardianMarketPaused sZRX "Mint" False
+    Assert Revert "revert protocol is paused"
+    Comptroller SetProtocolPaused False

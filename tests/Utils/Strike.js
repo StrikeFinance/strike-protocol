@@ -98,7 +98,6 @@ async function makeComptroller(opts = {}) {
     mergeInterface(unitroller, comptroller);
     await send(unitroller, '_setLiquidationIncentive', [liquidationIncentive]);
     await send(unitroller, '_setCloseFactor', [closeFactor]);
-    await send(unitroller, '_setMaxAssets', [maxAssets]);
     await send(unitroller, '_setPriceOracle', [priceOracle._address]);
     await send(unitroller, 'setSTRKAddress', [strk._address]); // harness only
     await send(unitroller, "harnessSetStrikeRate", [strikeRate]);

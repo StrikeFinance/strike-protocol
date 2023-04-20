@@ -33,9 +33,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     /// @notice Emitted when liquidation incentive is changed by admin
     event NewLiquidationIncentive(uint oldLiquidationIncentiveMantissa, uint newLiquidationIncentiveMantissa);
 
-    /// @notice Emitted when maxAssets is changed by admin
-    event NewMaxAssets(uint oldMaxAssets, uint newMaxAssets);
-
     /// @notice Emitted when price oracle is changed
     event NewPriceOracle(PriceOracle oldPriceOracle, PriceOracle newPriceOracle);
 
@@ -47,6 +44,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
     /// @notice Emitted when an action is paused on a market
     event ActionPaused(SToken sToken, string action, bool pauseState);
+
+    /// @notice Emitted when protocol pause state is changed by admin
+    event ActionProtocolPaused(bool state);
 
     /// @notice Emitted when market striked status is changed
     event MarketStriked(SToken sToken, bool isStriked);
@@ -80,11 +80,12 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
     /// @notice Emitted when strk staking info is changed
     event NewStrkStakingInfo(address oldStrkStaking, address newStrkStaking);
-    /// @notice Emitted when supply cap for a sToken is changed
-    event NewSupplyCap(SToken indexed sToken, uint newSupplyCap);
 
-    /// @notice Emitted when supply cap guardian is changed
-    event NewSupplyCapGuardian(address oldSupplyCapGuardian, address newSupplyCapGuardian);
+    /// @notice Emitted when market cap for a sToken is changed
+    event NewMarketCap(SToken indexed sToken, uint newSupplyCap, uint newBorrowCap);
+
+    /// @notice Emitted when market cap guardian is changed
+    event NewMarketCapGuardian(address oldMarketCapGuardian, address newMarketCapGuardian);
 
     /// @notice The threshold above which the flywheel transfers STRK, in wei
     uint public constant strikeClaimThreshold = 0.001e18;
@@ -109,6 +110,16 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
     constructor() public {
         admin = msg.sender;
+    }
+
+    modifier onlyProtocolAllowed {
+        require(!protocolPaused, "protocol is paused");
+        _;
+    }
+
+    modifier validPauseState(bool state) {
+        require(msg.sender == pauseGuardian || msg.sender == admin, "only pause guardian and admin can");
+        _;
     }
 
     /*** Assets You Are In ***/
@@ -169,11 +180,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         if (marketToJoin.accountMembership[borrower] == true) {
             // already joined
             return Error.NO_ERROR;
-        }
-
-        if (accountAssets[borrower].length >= maxAssets)  {
-            // no space, cannot join
-            return Error.TOO_MANY_ASSETS;
         }
 
         // survived the gauntlet, add to list
@@ -257,9 +263,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param mintAmount The amount of underlying being supplied to the market in exchange for tokens
      * @return 0 if the mint is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
-    function mintAllowed(address sToken, address minter, uint mintAmount) external returns (uint) {
+    function mintAllowed(address sToken, address minter, uint mintAmount) external onlyProtocolAllowed returns (uint) {
         // Pausing is a very serious situation - we revert to sound the alarms
-        require(!mintGuardianPaused[sToken], "mint is paused");
 
         // Shh - currently unused
         minter;
@@ -303,11 +308,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         minter;
         actualMintAmount;
         mintTokens;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
     }
 
     /**
@@ -317,7 +317,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param redeemTokens The number of sTokens to exchange for the underlying asset in the market
      * @return 0 if the redeem is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
-    function redeemAllowed(address sToken, address redeemer, uint redeemTokens) external returns (uint) {
+    function redeemAllowed(address sToken, address redeemer, uint redeemTokens) external onlyProtocolAllowed returns (uint) {
         uint allowed = redeemAllowedInternal(sToken, redeemer, redeemTokens);
         if (allowed != uint(Error.NO_ERROR)) {
             return allowed;
@@ -377,7 +377,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param borrowAmount The amount of underlying the account would borrow
      * @return 0 if the borrow is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
-    function borrowAllowed(address sToken, address borrower, uint borrowAmount) external returns (uint) {
+    function borrowAllowed(address sToken, address borrower, uint borrowAmount) external onlyProtocolAllowed returns (uint) {
         // Pausing is a very serious situation - we revert to sound the alarms
         require(!borrowGuardianPaused[sToken], "borrow is paused");
 
@@ -401,6 +401,15 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
         if (oracle.getUnderlyingPrice(SToken(sToken)) == 0) {
             return uint(Error.PRICE_ERROR);
+        }
+
+        uint borrowCap = borrowCaps[sToken];
+        // Borrow cap of 0 corresponds to unlimited borrowing
+        if (borrowCap != 0) {
+            uint totalBorrows = SToken(sToken).totalBorrows();
+            (MathError mathErr, uint nextTotalBorrows) = addUInt(totalBorrows, borrowAmount);
+            require(mathErr == MathError.NO_ERROR, "total borrows overflow");
+            require(nextTotalBorrows < borrowCap, "market borrow cap reached");
         }
 
         (Error err, , uint shortfall) = getHypotheticalAccountLiquidityInternal(borrower, SToken(sToken), 0, borrowAmount);
@@ -430,11 +439,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         sToken;
         borrower;
         borrowAmount;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
     }
 
     /**
@@ -449,7 +453,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         address sToken,
         address payer,
         address borrower,
-        uint repayAmount) external returns (uint) {
+        uint repayAmount) external onlyProtocolAllowed returns (uint) {
         // Shh - currently unused
         payer;
         borrower;
@@ -486,11 +490,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         borrower;
         actualRepayAmount;
         borrowerIndex;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
     }
 
     /**
@@ -506,7 +505,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         address sTokenCollateral,
         address liquidator,
         address borrower,
-        uint repayAmount) external returns (uint) {
+        uint repayAmount) external onlyProtocolAllowed returns (uint) {
         // Shh - currently unused
         liquidator;
 
@@ -558,11 +557,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         borrower;
         actualRepayAmount;
         seizeTokens;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
     }
 
     /**
@@ -578,9 +572,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         address sTokenBorrowed,
         address liquidator,
         address borrower,
-        uint seizeTokens) external returns (uint) {
+        uint seizeTokens) external onlyProtocolAllowed returns (uint) {
         // Pausing is a very serious situation - we revert to sound the alarms
-        require(!seizeGuardianPaused, "seize is paused");
 
         // Shh - currently unused
         seizeTokens;
@@ -621,11 +614,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         liquidator;
         borrower;
         seizeTokens;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
     }
 
     /**
@@ -636,9 +624,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param transferTokens The number of sTokens to transfer
      * @return 0 if the transfer is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
-    function transferAllowed(address sToken, address src, address dst, uint transferTokens) external returns (uint) {
+    function transferAllowed(address sToken, address src, address dst, uint transferTokens) external onlyProtocolAllowed returns (uint) {
         // Pausing is a very serious situation - we revert to sound the alarms
-        require(!transferGuardianPaused, "transfer is paused");
 
         // Currently the only consideration is whether or not
         //  the src is allowed to redeem this many tokens
@@ -668,11 +655,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         src;
         dst;
         transferTokens;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
     }
 
     /*** Liquidity/Liquidation Calculations ***/
@@ -972,25 +954,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     /**
-      * @notice Sets maxAssets which controls how many markets can be entered
-      * @dev Admin function to set maxAssets
-      * @param newMaxAssets New max assets
-      * @return uint 0=success, otherwise a failure. (See ErrorReporter for details)
-      */
-    function _setMaxAssets(uint newMaxAssets) external returns (uint) {
-        // Check caller is admin
-        if (msg.sender != admin) {
-            return fail(Error.UNAUTHORIZED, FailureInfo.SET_MAX_ASSETS_OWNER_CHECK);
-        }
-
-        uint oldMaxAssets = maxAssets;
-        maxAssets = newMaxAssets;
-        emit NewMaxAssets(oldMaxAssets, newMaxAssets);
-
-        return uint(Error.NO_ERROR);
-    }
-
-    /**
       * @notice Sets liquidationIncentive
       * @dev Admin function to set liquidationIncentive
       * @param newLiquidationIncentiveMantissa New liquidationIncentive scaled by 1e18
@@ -1104,13 +1067,12 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         return uint(Error.NO_ERROR);
     }
 
-    function _setMintPaused(SToken sToken, bool state) public returns (bool) {
-        require(markets[address(sToken)].isListed, "cannot pause a market that is not listed");
-        require(msg.sender == pauseGuardian || msg.sender == admin, "only pause guardian and admin can pause");
-        require(msg.sender == admin || state == true, "only admin can unpause");
-
-        mintGuardianPaused[address(sToken)] = state;
-        emit ActionPaused(sToken, "Mint", state);
+    /**
+     * @notice Set whole protocol pause/unpause state
+     */
+    function _setProtocolPaused(bool state) public validPauseState(state) returns(bool) {
+        protocolPaused = state;
+        emit ActionProtocolPaused(state);
         return state;
     }
 
@@ -1121,24 +1083,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
         borrowGuardianPaused[address(sToken)] = state;
         emit ActionPaused(sToken, "Borrow", state);
-        return state;
-    }
-
-    function _setTransferPaused(bool state) public returns (bool) {
-        require(msg.sender == pauseGuardian || msg.sender == admin, "only pause guardian and admin can pause");
-        require(msg.sender == admin || state == true, "only admin can unpause");
-
-        transferGuardianPaused = state;
-        emit ActionPaused("Transfer", state);
-        return state;
-    }
-
-    function _setSeizePaused(bool state) public returns (bool) {
-        require(msg.sender == pauseGuardian || msg.sender == admin, "only pause guardian and admin can pause");
-        require(msg.sender == admin || state == true, "only admin can unpause");
-
-        seizeGuardianPaused = state;
-        emit ActionPaused("Seize", state);
         return state;
     }
 
@@ -1174,39 +1118,42 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     /**
-     * @notice Admin function to change the Supply Cap Guardian
-     * @param newSupplyCapGuardian The address of the new Supply Cap Guardian
+     * @notice Admin function to change the Market Cap Guardian
+     * @param newMarketCapGuardian The address of the new Market Cap Guardian
      */
-    function _setSupplyCapGuardian(address newSupplyCapGuardian) external {
-        require(msg.sender == admin, "only admin can set supply cap guardian");
+    function _setMarketCapGuardian(address newMarketCapGuardian) external {
+        require(msg.sender == admin, "only admin can set market cap guardian");
 
         // Save current value for inclusion in log
-        address oldSupplyCapGuardian = supplyCapGuardian;
+        address oldMarketCapGuardian = marketCapGuardian;
 
-        // Store supplyCapGuardian with value newSupplyCapGuardian
-        supplyCapGuardian = newSupplyCapGuardian;
+        // Store marketCapGuardian with value newMarketCapGuardian
+        marketCapGuardian = newMarketCapGuardian;
 
-        // Emit NewSupplyCapGuardian(OldSupplyCapGuardian, NewSupplyCapGuardian)
-        emit NewSupplyCapGuardian(oldSupplyCapGuardian, newSupplyCapGuardian);
+        // Emit NewMarketCapGuardian(OldMarketCapGuardian, NewMarketCapGuardian)
+        emit NewMarketCapGuardian(oldMarketCapGuardian, newMarketCapGuardian);
     }
 
     /**
-      * @notice Set the given supply caps for the given sToken markets. Supplying that brings total supplys to or above supply cap will revert.
-      * @dev Admin or supplyCapGuardian function to set the supply caps. A supply cap of 0 corresponds to unlimited supplying.
-      * @param sTokens The addresses of the markets (tokens) to change the supply caps for
+      * @notice Set the given market caps for the given sToken markets.
+      * @dev Admin or marketCapGuardian function to set the market caps.
+      * @param sTokens The addresses of the markets (tokens) to change the market caps for
       * @param newSupplyCaps The new supply cap values in underlying to be set. A value of 0 corresponds to unlimited supplying.
+      * @param newBorrowCaps The new borrow cap values in underlying to be set. A value of 0 corresponds to unlimited borrowing.
       */
-    function _setMarketSupplyCaps(SToken[] calldata sTokens, uint[] calldata newSupplyCaps) external {
-        require(msg.sender == admin || msg.sender == supplyCapGuardian, "only admin or supply cap guardian can set supply caps");
+    function _setMarketCaps(SToken[] calldata sTokens, uint[] calldata newSupplyCaps, uint[] calldata newBorrowCaps) external {
+        require(msg.sender == admin || msg.sender == marketCapGuardian, "only admin or market cap guardian can set supply caps");
 
         uint numMarkets = sTokens.length;
         uint numSupplyCaps = newSupplyCaps.length;
+        uint numBorrowCaps = newBorrowCaps.length;
 
-        require(numMarkets != 0 && numMarkets == numSupplyCaps, "invalid input");
+        require(numMarkets != 0 && numMarkets == numSupplyCaps && numMarkets == numBorrowCaps, "invalid input");
 
         for (uint i = 0; i < numMarkets; i++) {
             supplyCaps[address(sTokens[i])] = newSupplyCaps[i];
-            emit NewSupplyCap(sTokens[i], newSupplyCaps[i]);
+            borrowCaps[address(sTokens[i])] = newBorrowCaps[i];
+            emit NewMarketCap(sTokens[i], newSupplyCaps[i], newBorrowCaps[i]);
         }
     }
 
@@ -1352,25 +1299,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         uint borrowerAccrued = add_(strikeAccrued[borrower], borrowerDelta);
         strikeAccrued[borrower] = borrowerAccrued;
         emit DistributedBorrowerStrike(SToken(sToken), borrower, borrowerDelta, borrowIndex);
-    }
-
-    /**
-     * @notice Transfer STRK to the user, if they are above the threshold
-     * @dev Note: If there is not enough STRK, we do not perform the transfer all.
-     * @param user The address of the user to transfer STRK to
-     * @param userAccrued The amount of STRK to (possibly) transfer
-     * @return The amount of STRK which was NOT transferred to the user
-     */
-    function transferStrike(address user, uint userAccrued, uint threshold) internal returns (uint) {
-        if (userAccrued >= threshold && userAccrued > 0) {
-            STRK strk = STRK(getSTRKAddress());
-            uint strikeRemaining = strk.balanceOf(address(this));
-            if (userAccrued <= strikeRemaining) {
-                strk.transfer(user, userAccrued);
-                return 0;
-            }
-        }
-        return userAccrued;
     }
 
     /**
@@ -1521,22 +1449,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     /**
-     * @notice Remove a market from strikeMarkets, preventing it from earning STRK in the flywheel
-     * @param sToken The address of the market to drop
-     */
-    function _dropStrikeMarket(address sToken) public {
-        require(msg.sender == admin, "only admin can drop strike market");
-
-        Market storage market = markets[sToken];
-        require(market.isStriked == true, "market is not a strike market");
-
-        market.isStriked = false;
-        emit MarketStriked(SToken(sToken), false);
-
-        // refreshStrikeSpeedsInternal();
-    }
-
-    /**
      * @notice Return all of the markets
      * @dev The automatic getter may be used to access an individual market.
      * @return The list of market addresses
@@ -1556,22 +1468,5 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     function getSTRKAddress() public view returns (address) {
         return 0x74232704659ef37c08995e386A2E26cc27a8d7B1;
     }
-
-    /**
-     * @notice check user can claim Strike Token by suppling
-     * @return bool: true - can claim, false: cannot claim
-     */
-
-    function canClaimStrikeBySuppling(address user) public view returns (bool) {
-        SToken[] memory sTokens = accountAssets[user];
-        for (uint i = 0; i < sTokens.length; i++) {
-            SToken asset = sTokens[i];
-            if (asset.balanceOf(user) > 0) {
-                return true;
-            }
-        }
-        return false;
-    }
-
 
 }

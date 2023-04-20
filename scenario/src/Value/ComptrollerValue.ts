@@ -575,15 +575,15 @@ export function comptrollerFetchers() {
       }
     ),
     new Fetcher<{comptroller: Comptroller}, AddressV>(`
-        #### SupplyCapGuardian
-        * "SupplyCapGuardian" - Returns the Comptrollers's SupplyCapGuardian
-        * E.g. "Comptroller SupplyCapGuardian"
+        #### MarketCapGuardian
+        * "MarketCapGuardian" - Returns the Comptrollers's MarketCapGuardian
+        * E.g. "Comptroller MarketCapGuardian"
         `,
-        "SupplyCapGuardian",
+        "MarketCapGuardian",
         [
           new Arg("comptroller", getComptroller, {implicit: true})
         ],
-        async (world, {comptroller}) => new AddressV(await comptroller.methods.supplyCapGuardian().call())
+        async (world, {comptroller}) => new AddressV(await comptroller.methods.marketCapGuardian().call())
     ),
     new Fetcher<{comptroller: Comptroller, SToken: SToken}, NumberV>(`
         #### SupplyCaps
@@ -596,6 +596,19 @@ export function comptrollerFetchers() {
         ],
         async (world, {comptroller, SToken}) => {
           return new NumberV(await comptroller.methods.supplyCaps(SToken._address).call());
+        }
+    ),
+    new Fetcher<{comptroller: Comptroller, SToken: SToken}, NumberV>(`
+        #### BorrowCaps
+        * "Comptroller BorrowCaps sZRX
+      `,
+        "BorrowCaps",
+        [
+          new Arg("comptroller", getComptroller, {implicit: true}),
+          new Arg("SToken", getSTokenV),
+        ],
+        async (world, {comptroller, SToken}) => {
+          return new NumberV(await comptroller.methods.borrowCaps(SToken._address).call());
         }
     ),
   ];

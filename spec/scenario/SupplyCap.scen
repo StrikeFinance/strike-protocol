@@ -1,7 +1,7 @@
 Test "Attempt to supply over set cap ERC20"
     NewComptroller price:1.0
     NewSToken ZRX sZRX
-    Comptroller SetMarketSupplyCaps (sZRX) (0.5e18)
+    Comptroller SetMarketCaps (sZRX) (0.5e18) (0.5e18)
     Assert Equal (Comptroller SupplyCaps sZRX) (Exactly 0.5e18)
     Support sZRX collateralFactor:0.5
     Prep Geoff 0.5e18 ZRX sZRX
@@ -15,7 +15,7 @@ Test "Attempt to supply at set cap ERC20"
     NewComptroller price:1.0
     NewSToken ZRX sZRX
     NewSToken BAT sBAT
-    Comptroller SetMarketSupplyCaps (sZRX) (100000000000000000001)
+    Comptroller SetMarketCaps (sZRX) (100000000000000000001) (100000000000000000001)
     Support sZRX collateralFactor:0.5
     Prep Geoff Some ZRX sZRX
     Mint Geoff 100e18 sZRX
@@ -25,7 +25,7 @@ Test "Attempt to supply at set cap ERC20"
 Test "Attempt to supply below set cap ERC20"
     NewComptroller price:1.0
     NewSToken ZRX sZRX
-    Comptroller SetMarketSupplyCaps (sZRX) (1e18)
+    Comptroller SetMarketCaps (sZRX) (1e18) (1e18)
     Support sZRX collateralFactor:0.5
     Prep Geoff Some ZRX sZRX
     Mint Geoff 0.5e18 sZRX
@@ -38,7 +38,7 @@ Test "Cannot supply more even all underlying is borrowed"
     NewSToken BAT sBAT
     Support sZRX collateralFactor:0.5
     Support sBAT collateralFactor:0.5
-    Comptroller SetMarketSupplyCaps (sZRX) (1e18)
+    Comptroller SetMarketCaps (sZRX) (1e18) (0e18)
     Give sZRX 1e18 ZRX -- Faucet some zrx to borrow
     Prep Robert Some BAT sBAT
     Mint Robert 100e18 sBAT
@@ -56,27 +56,27 @@ Test "Setting supply cap restricted to admin"
     ListedSToken ZRX sZRX
     SetCollateralFactor sZRX collateralFactor:0.5
     AllowFailures
-    From Robert (Comptroller SetMarketSupplyCaps (sZRX) (0.01e18))
+    From Robert (Comptroller SetMarketCaps (sZRX) (0.01e18) (0.01e18))
     Assert Revert
 
 Test "Supply cap guardian can set supply caps"
     NewComptroller price:1.0
     ListedSToken ZRX sZRX
     SetCollateralFactor sZRX collateralFactor:0.5
-    Comptroller SetSupplyCapGuardian Geoff
-    From Geoff (Comptroller SetMarketSupplyCaps (sZRX) (0.5e18))
+    Comptroller SetMarketCapGuardian Geoff
+    From Geoff (Comptroller SetMarketCaps (sZRX) (0.5e18) (0.5e18))
     Assert Equal (Comptroller SupplyCaps sZRX) (Exactly 0.5e18)
-    Assert Equal (Comptroller SupplyCapGuardian) (User Geoff Address)
+    Assert Equal (Comptroller MarketCapGuardian) (User Geoff Address)
     AllowFailures
-    From Robert (Comptroller SetMarketSupplyCaps (sZRX) (0.01e18)) -- Robert still can't...
+    From Robert (Comptroller SetMarketCaps (sZRX) (0.01e18) (0.01e18)) -- Robert still can't...
     Assert Revert
-    From Robert (Comptroller SetMarketSupplyCaps (sZRX) (0.01e18))
+    From Robert (Comptroller SetMarketCaps (sZRX) (0.01e18) (0.01e18))
     Assert Revert
 
 Test "Only admin can set Supply Cap Guardian"
     NewComptroller price:1.0
     AllowFailures
-    From Robert (Comptroller SetSupplyCapGuardian Robert) -- Robert has really gone rogue
+    From Robert (Comptroller SetMarketCapGuardian Robert) -- Robert has really gone rogue
     Assert Revert
 
 Test "Reserves should not affect supply cap"
@@ -90,10 +90,38 @@ Test "Reserves should not affect supply cap"
     Assert Equal (SToken sUSDC Reserves) (Exactly 1e18)
     -- Current supply level should exclude reserves, which should be 15e18 - 1e18 = 14e18.
     --   Setting supply caps to 14e18 should block users from supplying.
-    Comptroller SetMarketSupplyCaps (sUSDC) (14e18)
+    Comptroller SetMarketCaps (sUSDC) (14e18) (14e18)
     AllowFailures
     Mint Geoff 1 sUSDC
     Assert Revert
     Successfully
-    Comptroller SetMarketSupplyCaps (sUSDC) (15e18)
+    Comptroller SetMarketCaps (sUSDC) (15e18) (15e18)
     Mint Geoff 999999999999999999 sUSDC
+
+Test "SetBorrowCaps works correctly too"
+    NewComptroller price:1.0
+    NewSToken ZRX sZRX
+    NewSToken BAT sBAT
+    NewSToken USDC sUSDC
+    Comptroller SetMarketCaps (sBAT sUSDC) (0 0) (0.5e18 1000001)
+    Assert Equal (Comptroller BorrowCaps sBAT) (Exactly 0.5e18)
+    Assert Equal (Comptroller BorrowCaps sUSDC) (Exactly 1000001)
+    Give sBAT 10e18 BAT -- Faucet some bat to borrow
+    Give sUSDC 20e6 USDC
+    Support sZRX collateralFactor:0.5
+    Support sBAT collateralFactor:0.5
+    Support sUSDC collateralFactor:0.5
+    Prep Geoff Some ZRX sZRX
+    Mint Geoff 100e18 sZRX
+    EnterMarkets Geoff sZRX
+    AllowFailures
+    Borrow Geoff 1e18 sBAT
+    Assert Revert
+    Borrow Geoff 2e6 sUSDC
+    Assert Revert
+    Successfully
+    Borrow Geoff 1e6 sUSDC
+    Assert Equal (sToken sBAT BorrowBalance Geoff) (Exactly 0)
+    Assert Equal (Erc20 BAT TokenBalance Geoff) (Exactly 0)
+    Assert Equal (Erc20 BAT TokenBalance sBAT) (Exactly 10e18)
+    Assert Equal (Erc20 USDC TokenBalance Geoff) (Exactly 1e6)

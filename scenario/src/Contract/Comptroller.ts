@@ -35,6 +35,8 @@ interface ComptrollerMethods {
   _acceptAdmin(): Sendable<number>
   _setPauseGuardian(string): Sendable<number>
   pauseGuardian(): Callable<string>
+  _setProtocolPaused(bool): Sendable<number>
+  protocolPaused(): Callable<boolean>
   _setMintPaused(market: string, string): Sendable<number>
   _setBorrowPaused(market: string, string): Sendable<number>
   _setTransferPaused(string): Sendable<number>
@@ -67,10 +69,11 @@ interface ComptrollerMethods {
   _setStrikeSpeeds(cTokens: string[], supplySpeeds: encodedNumber[], borrowSpeeds: encodedNumber[]): Sendable<void>
   _setReserveInfo(guardian, address): Sendable<number>
   _setStrkStakingInfo(address): Sendable<number>
-  _setMarketSupplyCaps(sTokens:string[], supplyCaps:encodedNumber[]): Sendable<void>
-  _setSupplyCapGuardian(string): Sendable<void>
-  supplyCapGuardian(): Callable<string>
+  _setMarketCaps(sTokens:string[], supplyCaps:encodedNumber[], borrowCaps:encodedNumber[]): Sendable<void>
+  _setMarketCapGuardian(string): Sendable<void>
+  marketCapGuardian(): Callable<string>
   supplyCaps(string): Callable<string>
+  borrowCaps(string): Callable<string>
 }
 
 export interface Comptroller extends Contract {

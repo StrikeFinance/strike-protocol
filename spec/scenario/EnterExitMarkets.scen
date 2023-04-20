@@ -9,12 +9,12 @@ Test "Enter Markets Idempotent"
 	Assert Log MarketEntered (sToken (Address sZRX)) (account (Address Geoff))
 	Assert Equal (Comptroller MembershipLength Geoff) (Exactly 1)
 	Assert True (Comptroller CheckMembership Geoff sZRX)
-	ListedSToken OMG cOMG
-	EnterMarkets Geoff sZRX cOMG
+	ListedSToken OMG sOMG
+	EnterMarkets Geoff sZRX sOMG
 	Assert Equal (Comptroller MembershipLength Geoff) (Exactly 2)
 	Assert True (Comptroller CheckMembership Geoff sZRX)
-	Assert True (Comptroller CheckMembership Geoff cOMG)
-	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address cOMG)]
+	Assert True (Comptroller CheckMembership Geoff sOMG)
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address sOMG)]
 
 Test "Entered Market Must Be Supported"
 	NewComptroller
@@ -22,27 +22,16 @@ Test "Entered Market Must Be Supported"
 	ListedSToken ZRX sZRX
 	EnterMarkets Geoff sZRX
 	Assert Equal (Comptroller MembershipLength Geoff) (Exactly 1)
-	NewSToken OMG cOMG
-	EnterMarkets Geoff sZRX cOMG
+	NewSToken OMG sOMG
+	EnterMarkets Geoff sZRX sOMG
 	Assert Equal (Comptroller MembershipLength Geoff) (Exactly 1)
 	Assert True (Comptroller CheckMembership Geoff sZRX)
-	Assert False (Comptroller CheckMembership Geoff cOMG)
-	Support cOMG
-	EnterMarkets Geoff sZRX cOMG
+	Assert False (Comptroller CheckMembership Geoff sOMG)
+	Support sOMG
+	EnterMarkets Geoff sZRX sOMG
 	Assert Equal (Comptroller MembershipLength Geoff) (Exactly 2)
 	Assert True (Comptroller CheckMembership Geoff sZRX)
-	Assert True (Comptroller CheckMembership Geoff cOMG)
-
-Test "Cannot enter Markets beyond max assets"
-	NewComptroller
-	Comptroller SetMaxAssets 1
-	Assert Equal (Comptroller MembershipLength Geoff) Zero
-	ListedSToken ZRX sZRX
-	ListedSToken OMG cOMG
-	EnterMarkets Geoff sZRX cOMG
-	Assert Equal (Comptroller MembershipLength Geoff) (Exactly 1)
-	Assert True (Comptroller CheckMembership Geoff sZRX)
-	Assert False (Comptroller CheckMembership Geoff cOMG)
+	Assert True (Comptroller CheckMembership Geoff sOMG)
 
 Test "Exit single market"
 	NewComptroller
@@ -61,35 +50,35 @@ Test "Exit non-entered market"
 Test "Exit one of two market from the front"
 	NewComptroller
 	ListedSToken ZRX sZRX
-	ListedSToken OMG cOMG
-	EnterMarkets Geoff sZRX cOMG
-	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address cOMG)]
+	ListedSToken OMG sOMG
+	EnterMarkets Geoff sZRX sOMG
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address sOMG)]
 	ExitMarket Geoff sZRX
-	Assert Equal (Comptroller AssetsIn Geoff) [(Address cOMG)]
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sOMG)]
 
 Test "Exit one of two market from the back"
 	NewComptroller
 	ListedSToken ZRX sZRX
-	ListedSToken OMG cOMG
-	EnterMarkets Geoff sZRX cOMG
-	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address cOMG)]
-	ExitMarket Geoff cOMG
+	ListedSToken OMG sOMG
+	EnterMarkets Geoff sZRX sOMG
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address sOMG)]
+	ExitMarket Geoff sOMG
 	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX)]
 
 Test "Exit multiple markets"
 	NewComptroller
 	ListedSToken ZRX sZRX
-	ListedSToken OMG cOMG
+	ListedSToken OMG sOMG
 	ListedSToken BAT sBAT
 	ListedSToken REP sREP
 	ListedSToken DAI sDAI
-	EnterMarkets Geoff sZRX cOMG sBAT sREP sDAI
-	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address cOMG) (Address sBAT) (Address sREP) (Address sDAI)]
+	EnterMarkets Geoff sZRX sOMG sBAT sREP sDAI
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sZRX) (Address sOMG) (Address sBAT) (Address sREP) (Address sDAI)]
 	ExitMarket Geoff sZRX
-	Assert Equal (Comptroller AssetsIn Geoff) [(Address sDAI) (Address cOMG) (Address sBAT) (Address sREP)]
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sDAI) (Address sOMG) (Address sBAT) (Address sREP)]
 	ExitMarket Geoff sREP
-	Assert Equal (Comptroller AssetsIn Geoff) [(Address sDAI) (Address cOMG) (Address sBAT)]
-	ExitMarket Geoff cOMG
+	Assert Equal (Comptroller AssetsIn Geoff) [(Address sDAI) (Address sOMG) (Address sBAT)]
+	ExitMarket Geoff sOMG
 	Assert Equal (Comptroller AssetsIn Geoff) [(Address sDAI) (Address sBAT)]
 	ExitMarket Geoff sDAI
 	Assert Equal (Comptroller AssetsIn Geoff) [(Address sBAT)]
