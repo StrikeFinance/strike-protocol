@@ -87,26 +87,11 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     /// @notice Emitted when market cap guardian is changed
     event NewMarketCapGuardian(address oldMarketCapGuardian, address newMarketCapGuardian);
 
-    /// @notice The threshold above which the flywheel transfers STRK, in wei
-    uint public constant strikeClaimThreshold = 0.001e18;
-
     /// @notice The initial STRK index for a market
     uint224 public constant strikeInitialIndex = 1e36;
 
-    // closeFactorMantissa must be strictly greater than this value
-    uint internal constant closeFactorMinMantissa = 0.05e18; // 0.05
-
-    // closeFactorMantissa must not exceed this value
-    uint internal constant closeFactorMaxMantissa = 0.9e18; // 0.9
-
     // No collateralFactorMantissa may exceed this value
     uint internal constant collateralFactorMaxMantissa = 0.9e18; // 0.9
-
-    // liquidationIncentiveMantissa must be no less than this value
-    uint internal constant liquidationIncentiveMinMantissa = 1.0e18; // 1.0
-
-    // liquidationIncentiveMantissa must be no greater than this value
-    uint internal constant liquidationIncentiveMaxMantissa = 1.5e18; // 1.5
 
     constructor() public {
         admin = msg.sender;
@@ -885,24 +870,11 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
       * @notice Sets the closeFactor used when liquidating borrows
       * @dev Admin function to set closeFactor
       * @param newCloseFactorMantissa New close factor, scaled by 1e18
-      * @return uint 0=success, otherwise a failure. (See ErrorReporter for details)
+      * @return uint 0=success, otherwise a failure
       */
     function _setCloseFactor(uint newCloseFactorMantissa) external returns (uint) {
         // Check caller is admin
-        if (msg.sender != admin) {
-            return fail(Error.UNAUTHORIZED, FailureInfo.SET_CLOSE_FACTOR_OWNER_CHECK);
-        }
-
-        Exp memory newCloseFactorExp = Exp({mantissa: newCloseFactorMantissa});
-        Exp memory lowLimit = Exp({mantissa: closeFactorMinMantissa});
-        if (lessThanOrEqualExp(newCloseFactorExp, lowLimit)) {
-            return fail(Error.INVALID_CLOSE_FACTOR, FailureInfo.SET_CLOSE_FACTOR_VALIDATION);
-        }
-
-        Exp memory highLimit = Exp({mantissa: closeFactorMaxMantissa});
-        if (lessThanExp(highLimit, newCloseFactorExp)) {
-            return fail(Error.INVALID_CLOSE_FACTOR, FailureInfo.SET_CLOSE_FACTOR_VALIDATION);
-        }
+    	require(msg.sender == admin, "only admin can set close factor");
 
         uint oldCloseFactorMantissa = closeFactorMantissa;
         closeFactorMantissa = newCloseFactorMantissa;
@@ -963,18 +935,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         // Check caller is admin
         if (msg.sender != admin) {
             return fail(Error.UNAUTHORIZED, FailureInfo.SET_LIQUIDATION_INCENTIVE_OWNER_CHECK);
-        }
-
-        // Check de-scaled min <= newLiquidationIncentive <= max
-        Exp memory newLiquidationIncentive = Exp({mantissa: newLiquidationIncentiveMantissa});
-        Exp memory minLiquidationIncentive = Exp({mantissa: liquidationIncentiveMinMantissa});
-        if (lessThanExp(newLiquidationIncentive, minLiquidationIncentive)) {
-            return fail(Error.INVALID_LIQUIDATION_INCENTIVE, FailureInfo.SET_LIQUIDATION_INCENTIVE_VALIDATION);
-        }
-
-        Exp memory maxLiquidationIncentive = Exp({mantissa: liquidationIncentiveMaxMantissa});
-        if (lessThanExp(maxLiquidationIncentive, newLiquidationIncentive)) {
-            return fail(Error.INVALID_LIQUIDATION_INCENTIVE, FailureInfo.SET_LIQUIDATION_INCENTIVE_VALIDATION);
         }
 
         // Save current value for use in log

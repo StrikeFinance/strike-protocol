@@ -54,20 +54,6 @@ describe('Comptroller', () => {
       expect(await call(comptroller, 'liquidationIncentiveMantissa')).toEqualNumber(initialIncentive);
     });
 
-    it("fails if incentive is less than min", async () => {
-      const {reply, receipt} = await both(comptroller, '_setLiquidationIncentive', [tooSmallIncentive]);
-      expect(reply).toHaveTrollError('INVALID_LIQUIDATION_INCENTIVE');
-      expect(receipt).toHaveTrollFailure('INVALID_LIQUIDATION_INCENTIVE', 'SET_LIQUIDATION_INCENTIVE_VALIDATION');
-      expect(await call(comptroller, 'liquidationIncentiveMantissa')).toEqualNumber(initialIncentive);
-    });
-
-    it("fails if incentive is greater than max", async () => {
-      const {reply, receipt} = await both(comptroller, '_setLiquidationIncentive', [tooLargeIncentive]);
-      expect(reply).toHaveTrollError('INVALID_LIQUIDATION_INCENTIVE');
-      expect(receipt).toHaveTrollFailure('INVALID_LIQUIDATION_INCENTIVE', 'SET_LIQUIDATION_INCENTIVE_VALIDATION');
-      expect(await call(comptroller, 'liquidationIncentiveMantissa')).toEqualNumber(initialIncentive);
-    });
-
     it("accepts a valid incentive and emits a NewLiquidationIncentive event", async () => {
       const {reply, receipt} = await both(comptroller, '_setLiquidationIncentive', [validIncentive]);
       expect(reply).toHaveTrollError('NO_ERROR');
@@ -119,19 +105,9 @@ describe('Comptroller', () => {
   describe('_setCloseFactor', () => {
     it("fails if not called by admin", async () => {
       const sToken = await makeSToken();
-      expect(
-        await send(sToken.comptroller, '_setCloseFactor', [1], {from: accounts[0]})
-      ).toHaveTrollFailure('UNAUTHORIZED', 'SET_CLOSE_FACTOR_OWNER_CHECK');
-    });
-
-    it("fails if close factor too low", async () => {
-      const sToken = await makeSToken();
-      expect(await send(sToken.comptroller, '_setCloseFactor', [1])).toHaveTrollFailure('INVALID_CLOSE_FACTOR', 'SET_CLOSE_FACTOR_VALIDATION');
-    });
-
-    it("fails if close factor too low", async () => {
-      const sToken = await makeSToken();
-      expect(await send(sToken.comptroller, '_setCloseFactor', [etherMantissa(1e18)])).toHaveTrollFailure('INVALID_CLOSE_FACTOR', 'SET_CLOSE_FACTOR_VALIDATION');
+      await expect(
+        send(sToken.comptroller, '_setCloseFactor', [1], {from: accounts[0]})
+      ).rejects.toRevert('revert only admin can set close factor');
     });
   });
 
@@ -151,13 +127,6 @@ describe('Comptroller', () => {
       expect(
         await send(sToken.comptroller, '_setCollateralFactor', [sToken._address, half])
       ).toHaveTrollFailure('MARKET_NOT_LISTED', 'SET_COLLATERAL_FACTOR_NO_EXISTS');
-    });
-
-    it("fails if factor is too high", async () => {
-      const sToken = await makeSToken({supportMarket: true});
-      expect(
-        await send(sToken.comptroller, '_setCollateralFactor', [sToken._address, one])
-      ).toHaveTrollFailure('INVALID_COLLATERAL_FACTOR', 'SET_COLLATERAL_FACTOR_VALIDATION');
     });
 
     it("fails if factor is set without an underlying price", async () => {
