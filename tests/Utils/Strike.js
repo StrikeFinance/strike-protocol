@@ -36,7 +36,6 @@ async function makeComptroller(opts = {}) {
     const maxAssets = etherUnsigned(dfn(opts.maxAssets, 10));
 
     await send(comptroller, '_setCloseFactor', [closeFactor]);
-    await send(comptroller, '_setMaxAssets', [maxAssets]);
     await send(comptroller, '_setPriceOracle', [priceOracle._address]);
 
     return Object.assign(comptroller, { priceOracle });
@@ -98,7 +97,6 @@ async function makeComptroller(opts = {}) {
     mergeInterface(unitroller, comptroller);
     await send(unitroller, '_setLiquidationIncentive', [liquidationIncentive]);
     await send(unitroller, '_setCloseFactor', [closeFactor]);
-    await send(unitroller, '_setMaxAssets', [maxAssets]);
     await send(unitroller, '_setPriceOracle', [priceOracle._address]);
     await send(unitroller, 'setSTRKAddress', [strk._address]); // harness only
     await send(unitroller, "harnessSetStrikeRate", [strikeRate]);

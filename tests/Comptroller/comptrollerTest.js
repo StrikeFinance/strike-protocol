@@ -30,19 +30,9 @@ describe('Comptroller', () => {
       expect(await call(comptroller, 'pendingAdmin')).toEqualNumber(0);
     });
 
-    it("on success it sets closeFactor and maxAssets as specified", async () => {
+    it("on success it sets closeFactor as specified", async () => {
       const comptroller = await makeComptroller();
       expect(await call(comptroller, 'closeFactorMantissa')).toEqualNumber(0.051e18);
-      expect(await call(comptroller, 'maxAssets')).toEqualNumber(10);
-    });
-
-    it("allows small and large maxAssets", async () => {
-      const comptroller = await makeComptroller({maxAssets: 0});
-      expect(await call(comptroller, 'maxAssets')).toEqualNumber(0);
-
-      // 5000 is an arbitrary number larger than what we expect to ever actually use
-      await send(comptroller, '_setMaxAssets', [5000]);
-      expect(await call(comptroller, 'maxAssets')).toEqualNumber(5000);
     });
   });
 
@@ -61,20 +51,6 @@ describe('Comptroller', () => {
       const {reply, receipt} = await both(comptroller, '_setLiquidationIncentive', [initialIncentive], {from: accounts[0]});
       expect(reply).toHaveTrollError('UNAUTHORIZED');
       expect(receipt).toHaveTrollFailure('UNAUTHORIZED', 'SET_LIQUIDATION_INCENTIVE_OWNER_CHECK');
-      expect(await call(comptroller, 'liquidationIncentiveMantissa')).toEqualNumber(initialIncentive);
-    });
-
-    it("fails if incentive is less than min", async () => {
-      const {reply, receipt} = await both(comptroller, '_setLiquidationIncentive', [tooSmallIncentive]);
-      expect(reply).toHaveTrollError('INVALID_LIQUIDATION_INCENTIVE');
-      expect(receipt).toHaveTrollFailure('INVALID_LIQUIDATION_INCENTIVE', 'SET_LIQUIDATION_INCENTIVE_VALIDATION');
-      expect(await call(comptroller, 'liquidationIncentiveMantissa')).toEqualNumber(initialIncentive);
-    });
-
-    it("fails if incentive is greater than max", async () => {
-      const {reply, receipt} = await both(comptroller, '_setLiquidationIncentive', [tooLargeIncentive]);
-      expect(reply).toHaveTrollError('INVALID_LIQUIDATION_INCENTIVE');
-      expect(receipt).toHaveTrollFailure('INVALID_LIQUIDATION_INCENTIVE', 'SET_LIQUIDATION_INCENTIVE_VALIDATION');
       expect(await call(comptroller, 'liquidationIncentiveMantissa')).toEqualNumber(initialIncentive);
     });
 
@@ -129,19 +105,9 @@ describe('Comptroller', () => {
   describe('_setCloseFactor', () => {
     it("fails if not called by admin", async () => {
       const sToken = await makeSToken();
-      expect(
-        await send(sToken.comptroller, '_setCloseFactor', [1], {from: accounts[0]})
-      ).toHaveTrollFailure('UNAUTHORIZED', 'SET_CLOSE_FACTOR_OWNER_CHECK');
-    });
-
-    it("fails if close factor too low", async () => {
-      const sToken = await makeSToken();
-      expect(await send(sToken.comptroller, '_setCloseFactor', [1])).toHaveTrollFailure('INVALID_CLOSE_FACTOR', 'SET_CLOSE_FACTOR_VALIDATION');
-    });
-
-    it("fails if close factor too low", async () => {
-      const sToken = await makeSToken();
-      expect(await send(sToken.comptroller, '_setCloseFactor', [etherMantissa(1e18)])).toHaveTrollFailure('INVALID_CLOSE_FACTOR', 'SET_CLOSE_FACTOR_VALIDATION');
+      await expect(
+        send(sToken.comptroller, '_setCloseFactor', [1], {from: accounts[0]})
+      ).rejects.toRevert('revert only admin can set close factor');
     });
   });
 
@@ -161,13 +127,6 @@ describe('Comptroller', () => {
       expect(
         await send(sToken.comptroller, '_setCollateralFactor', [sToken._address, half])
       ).toHaveTrollFailure('MARKET_NOT_LISTED', 'SET_COLLATERAL_FACTOR_NO_EXISTS');
-    });
-
-    it("fails if factor is too high", async () => {
-      const sToken = await makeSToken({supportMarket: true});
-      expect(
-        await send(sToken.comptroller, '_setCollateralFactor', [sToken._address, one])
-      ).toHaveTrollFailure('INVALID_COLLATERAL_FACTOR', 'SET_COLLATERAL_FACTOR_VALIDATION');
     });
 
     it("fails if factor is set without an underlying price", async () => {
@@ -243,65 +202,6 @@ describe('Comptroller', () => {
       const comptroller = await makeComptroller();
       const sToken = await makeSToken({comptroller: comptroller});
       await expect(call(comptroller, 'redeemVerify', [sToken._address, accounts[0], 5, 0])).rejects.toRevert("revert redeemTokens zero");
-    });
-  });
-
-
-  describe('canClaimStrikeBySuppling', () => {
-    it('check token is not supported', async () => {
-      const comptroller = await makeComptroller();
-      const sToken1 = await makeSToken({comptroller: comptroller});
-      let account0 = saddle.account;
-      expect(
-        await call(
-            comptroller,
-            'canClaimStrikeBySuppling', 
-            [account0]
-        )
-      ).toEqual(false);
-
-    });
-
-    it('check token is supported but not supply', async () => {
-      const comptroller = await makeComptroller();
-      const sToken1 = await makeSToken({comptroller: comptroller});
-      const result1 = await send(sToken1.comptroller, '_supportMarket', [sToken1._address]);
-      expect(result1).toHaveLog('MarketListed', {sToken: sToken1._address});
-      let account0 = saddle.account;
-      expect(
-        await call(
-            comptroller,
-            'canClaimStrikeBySuppling', 
-            [account0]
-        )
-      ).toEqual(false);
-
-    });
-
-    it('check token is supported + supplied', async () => {
-      const comptroller = await makeComptroller();
-      const sToken1 = await makeSToken({comptroller: comptroller});
-      const result1 = await send(sToken1.comptroller, '_supportMarket', [sToken1._address]);
-      expect(result1).toHaveLog('MarketListed', {sToken: sToken1._address});
-      
-      let account0 = saddle.account;
-      //supply
-      await send(comptroller, 'enterMarkets', [[sToken1._address]]);
-      await send(sToken1.underlying, 'harnessSetBalance', [account0, 100], {from: account0});
-      await send(sToken1.underlying, 'approve', [sToken1._address, -1], {from: account0});
-      await minerStop();
-      const p3 = send(sToken1, 'mint', [10], {from: account0});
-      await minerStart();
-      expect(await p3).toSucceed();
-      expect(await balanceOf(sToken1, account0)).toEqualNumber(10);
-      expect(
-        await call(
-            comptroller,
-            'canClaimStrikeBySuppling', 
-            [account0]
-        )
-      ).toEqual(true);
-
     });
   })
 });

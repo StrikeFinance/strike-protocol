@@ -127,7 +127,7 @@ contract ComptrollerHarness is Comptroller {
 
     function harnessTransferStrike(address user, uint userAccrued, uint threshold) public returns (uint) {
         if (userAccrued > 0 && userAccrued >= threshold) {
-            return transferStrike(user, userAccrued, threshold);
+            return grantSTRKInternal(user, userAccrued);
         }
         return userAccrued;
     }

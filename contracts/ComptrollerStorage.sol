@@ -156,9 +156,17 @@ contract ComptrollerV6Storage is ComptrollerV5Storage {
 }
 
 contract ComptrollerV7Storage is ComptrollerV6Storage {
-    // @notice The supplyCapGuardian can set supplyCaps to any number for any market. Lowering the supply cap could disable supplying to the given market.
-    address public supplyCapGuardian;
+    // @notice The marketCapGuardian can set marketCaps to any number for any market.
+    address public marketCapGuardian;
 
     // @notice Supply caps enforced by mintAllowed for each sToken address. Defaults to zero which corresponds to unlimited supplying.
     mapping(address => uint) public supplyCaps;
+
+    // @notice Borrow caps enforced by borrowAllowed for each cToken address. Defaults to zero which corresponds to unlimited borrowing.
+    mapping(address => uint) public borrowCaps;
+
+    /**
+     * @notice The Pause Guardian can pause protocol.
+     */
+    bool public protocolPaused;
 }
