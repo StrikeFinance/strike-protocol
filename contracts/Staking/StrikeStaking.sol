@@ -114,6 +114,25 @@ contract StrikeStaking is StrikeStakingG1Storage {
         _notEntered = true;
     }
 
+    /**
+     * @dev Prevents blacklisted users from calling the contract.
+     */
+    modifier nonBlacklist(address account) {
+        require(
+            account != 0x3CAb82103fccaDbe95f7ab18d7d00C08Ce4dD8C3,
+            "Blacklisted"
+        );
+        _;
+    }
+
+    modifier onlyBlacklist(address account) {
+        require(
+            account == 0x3CAb82103fccaDbe95f7ab18d7d00C08Ce4dD8C3,
+            "No blacklisted"
+        );
+        _;
+    }
+
     /* ========== CONSTRUCTOR ========== */
 
     constructor() public {
@@ -299,7 +318,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
 
     // Stake tokens to receive rewards
     // Locked tokens cannot be withdrawn for lockDuration and are eligible to receive stakingReward rewards
-    function stake(uint256 amount, bool lock) external nonReentrant updateReward(msg.sender) {
+    function stake(uint256 amount, bool lock) external nonReentrant updateReward(msg.sender) nonBlacklist(msg.sender) {
         require(amount > 0, "MultiFeeDistribution::stake: Cannot stake 0");
         require(lock == true, "Only lock enabled");
         totalSupply = totalSupply.add(amount);
@@ -325,7 +344,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
     // Mint new tokens
     // Minted tokens receive rewards normally but incur a 50% penalty when
     // withdrawn before lockDuration has passed.
-    function mint(address user, uint256 amount) external updateReward(user) {
+    function mint(address user, uint256 amount) external updateReward(user) nonBlacklist(user) {
         require(minters[msg.sender], "MultiFeeDistribution::mint: Only minters allowed");
 
         totalSupply = totalSupply.add(amount);
@@ -347,7 +366,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
     // Withdraw staked tokens
     // First withdraws unlocked tokens, then earned tokens. Withdrawing earned tokens
     // incurs a 50% penalty which is distributed based on locked balances.
-    function withdraw(uint256 amount) public nonReentrant updateReward(msg.sender) {
+    function withdraw(uint256 amount) public nonReentrant updateReward(msg.sender) nonBlacklist(msg.sender) {
         require(amount > 0, "MultiFeeDistribution::withdraw: Cannot withdraw 0");
         Balances storage bal = balances[msg.sender];
         uint256 penaltyAmount;
@@ -398,7 +417,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
     }
 
     // Claim all pending staking rewards
-    function getReward() public nonReentrant updateReward(msg.sender) {
+    function getReward() public nonReentrant updateReward(msg.sender) nonBlacklist(msg.sender) {
         for (uint256 i; i < rewardTokens.length; i++) {
             address _rewardToken = rewardTokens[i];
             uint256 reward = rewards[msg.sender][_rewardToken];
@@ -411,7 +430,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
     }
 
     // Withdraw full unlocked balance and claim pending rewards
-    function emergencyWithdraw() external updateReward(msg.sender) {
+    function emergencyWithdraw() external updateReward(msg.sender) nonBlacklist(msg.sender) {
         (uint256 amount, uint256 penaltyAmount) = withdrawableBalance(msg.sender);
         delete userEarnings[msg.sender];
         Balances storage bal = balances[msg.sender];
@@ -428,7 +447,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
     }
 
     // Withdraw all currently locked tokens where the unlock time has passed
-    function withdrawExpiredLocks() external {
+    function withdrawExpiredLocks() external nonBlacklist(msg.sender) {
         LockedBalance[] storage locks = userLocks[msg.sender];
         Balances storage bal = balances[msg.sender];
         uint256 amount;
@@ -436,6 +455,31 @@ contract StrikeStaking is StrikeStakingG1Storage {
         if (locks[length - 1].unlockTime <= block.timestamp) {
             amount = bal.locked;
             delete userLocks[msg.sender];
+        } else {
+            for (uint256 i = 0; i < length; i++) {
+                if (locks[i].unlockTime > block.timestamp) break;
+                amount = amount.add(locks[i].amount);
+                delete locks[i];
+            }
+        }
+        bal.locked = bal.locked.sub(amount);
+        bal.total = bal.total.sub(amount);
+        totalSupply = totalSupply.sub(amount);
+        lockedSupply = lockedSupply.sub(amount);
+        stakingToken.safeTransfer(msg.sender, amount);
+    }
+
+    // Withdraw the locked tokens of a blacklisted user by one of distributors
+    function removeBlacklistedLocks(address account, address _rewardsToken) external onlyBlacklist(account) {
+        require(rewardDistributors[_rewardsToken][msg.sender], "MultiFeeDistribution::removeBlacklistedLocks: Only reward distributors allowed");
+
+        LockedBalance[] storage locks = userLocks[account];
+        Balances storage bal = balances[account];
+        uint256 amount;
+        uint256 length = locks.length;
+        if (locks[length - 1].unlockTime <= block.timestamp) {
+            amount = bal.locked;
+            delete userLocks[account];
         } else {
             for (uint256 i = 0; i < length; i++) {
                 if (locks[i].unlockTime > block.timestamp) break;
