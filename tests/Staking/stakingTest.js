@@ -1,10 +1,7 @@
 const { default: BigNumber } = require('bignumber.js');
 const {
   etherUnsigned,
-  etherMantissa,
-  both,
-  minerStart,
-  minerStop,
+  increaseTime
 } = require('../Utils/Ethereum');
 
 const {
@@ -178,5 +175,104 @@ describe('Staking', () => {
         newPendingAdmin: address(0),
       });
     });
+  });
+});
+
+describe('Staking-Blacklist', () => {
+  let root, blacklistedUser, alice, accounts;
+  let staking;
+  const strikeMinted = etherUnsigned(1e18).mul(1000);
+  const withdrawAmount = etherUnsigned(1e18).mul(100);
+  const halfAmount = etherUnsigned(1e18).mul(500);
+  const rewardAmount = etherUnsigned(1e18).mul(864 * 14);
+
+  beforeAll(async () => {
+    [root, blacklistedUser, alice, ...accounts] = saddle.accounts;
+    staking = await makeStaking();
+
+    expect(await call(staking, 'owner')).toEqual(root);
+    expect(await call(staking, 'admin')).toEqual(root);
+
+    await send(staking, 'initialize', [staking.strk._address, [root]], {from: root});
+
+    expect(await call(staking, 'stakingToken')).toEqual(staking.strk._address);
+
+    expect(await strikeBalance(staking, staking._address)).toEqualNumber(0);
+    await send(staking.strk, 'transfer', [staking._address, strikeMinted], {from: root});
+    expect(await strikeBalance(staking, staking._address)).toEqualNumber(strikeMinted);
+
+    // transfer STRK to blacklisted user
+    await send(staking.strk, 'transfer', [blacklistedUser, strikeMinted.mul(2)], {from: root});
+  });
+
+  it("blacklisted user can't stake", async () => {
+    await send(staking.strk, 'approve', [staking._address, strikeMinted.mul(2)], {from: blacklistedUser});
+    await send(staking, 'stake', [strikeMinted, true], {from: blacklistedUser});
+
+    expect(await call(staking, 'totalSupply')).toEqualNumber(strikeMinted);
+    expect(await call(staking, 'totalBalance', [blacklistedUser])).toEqualNumber(strikeMinted);
+
+    const lockedBalances = await call(staking, 'lockedBalances', [blacklistedUser]);
+    expect(lockedBalances.total).toEqualNumber(strikeMinted);
+    expect(lockedBalances.unlockable).toEqualNumber(0);
+    expect(lockedBalances.locked).toEqualNumber(strikeMinted);
+    expect(lockedBalances.lockData[0].amount).toEqualNumber(strikeMinted);
+
+    const withdrawableBalance = await call(staking, 'withdrawableBalance', [blacklistedUser]);
+    expect(withdrawableBalance.amount).toEqualNumber(0);
+    expect(withdrawableBalance.penaltyAmount).toEqualNumber(0);
+
+    // set blacklist
+    await send(staking, 'setBlacklist', [blacklistedUser], {from: blacklistedUser});
+
+    await expect(send(staking, 'stake', [strikeMinted, true], {from: blacklistedUser})).rejects.toRevert('revert Blacklisted');
+  });
+
+  it("blacklisted user can't mint", async () => {
+    await expect(send(staking, 'mint', [blacklistedUser, strikeMinted], {from: root})).rejects.toRevert('revert Blacklisted');
+  });
+
+  it("blacklisted user can't withdraw", async () => {
+    await send(staking, 'setBlacklist', [alice]);
+    await send(staking, 'mint', [blacklistedUser, strikeMinted], {from: root});
+
+    await send(staking, 'setBlacklist', [blacklistedUser], {from: blacklistedUser});
+    const withdrawableBalance = await call(staking, 'withdrawableBalance', [blacklistedUser]);
+    expect(withdrawableBalance.amount).toEqualNumber(halfAmount);
+    await expect(send(staking, 'withdraw', [withdrawAmount], {from: blacklistedUser})).rejects.toRevert('revert Blacklisted');
+    await expect(send(staking, 'emergencyWithdraw', [], {from: blacklistedUser})).rejects.toRevert('revert Blacklisted');
+  });
+
+  it("blacklisted user can't get reward", async () => {
+    await expect(send(staking, 'getReward', [], {from: blacklistedUser})).rejects.toRevert('revert Blacklisted');
+  });
+
+  it("blacklisted user can't unlock", async () => {
+    await expect(send(staking, 'withdrawExpiredLocks', [], {from: blacklistedUser})).rejects.toRevert('revert Blacklisted');
+  });
+
+  it("distributor can remove locks of blacklisted user", async () => {
+    // pass time by 12 weeks
+    await increaseTime(86400 * 7 * 12)
+
+    const lockedBalances = await call(staking, 'lockedBalances', [blacklistedUser]);
+    expect(lockedBalances.unlockable).toEqualNumber(strikeMinted);
+
+    await expect(send(staking, 'removeBlacklistedLocks', [alice, staking.strk._address, accounts[0]], {from: alice})).rejects.toRevert('revert No blacklisted');
+
+    // set alice as distributor
+    await send(staking, 'approveRewardDistributor', [staking.strk._address, alice, true]);
+
+    await send(staking.strk, 'transfer', [alice, rewardAmount], {from: root});
+    await send(staking.strk, 'approve', [staking._address, rewardAmount], {from: alice});
+    await send(staking, 'notifyRewardAmount', [staking.strk._address, rewardAmount], {from: alice});
+
+    await increaseTime(86400 * 7 * 2);
+
+    await expect(send(staking, 'removeBlacklistedLocks', [blacklistedUser, staking.strk._address, accounts[0]], {from: root})).rejects.toRevert('revert MultiFeeDistribution::removeBlacklistedLocks: Only reward distributors allowed');
+    await send(staking, 'removeBlacklistedLocks', [blacklistedUser, staking.strk._address, accounts[0]], {from: alice});
+
+    // balance should be sum of locked amount and reward amount
+    expect(await strikeBalance(staking, accounts[0])).toEqualNumber(strikeMinted.add(rewardAmount));
   });
 });
