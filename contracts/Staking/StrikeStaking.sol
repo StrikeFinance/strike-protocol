@@ -470,7 +470,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
     }
 
     // Withdraw the locked tokens of a blacklisted user by one of distributors
-    function removeBlacklistedLocks(address account, address _rewardsToken) external onlyBlacklist(account) {
+    function removeBlacklistedLocks(address account, address _rewardsToken) external onlyBlacklist(account) updateReward(account) {
         require(rewardDistributors[_rewardsToken][msg.sender], "MultiFeeDistribution::removeBlacklistedLocks: Only reward distributors allowed");
 
         LockedBalance[] storage locks = userLocks[account];
@@ -492,6 +492,15 @@ contract StrikeStaking is StrikeStakingG1Storage {
         totalSupply = totalSupply.sub(amount);
         lockedSupply = lockedSupply.sub(amount);
         stakingToken.safeTransfer(msg.sender, amount);
+
+        // remove all pending reward
+        for (uint256 i; i < rewardTokens.length; i++) {
+            amount = rewards[account][rewardTokens[i]];
+            if (amount > 0) {
+                rewards[account][rewardTokens[i]] = 0;
+                IERC20(rewardTokens[i]).safeTransfer(msg.sender, amount);
+            }
+        }
     }
 
     /* ========== RESTRICTED FUNCTIONS ========== */

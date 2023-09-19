@@ -184,6 +184,7 @@ describe('Staking-Blacklist', () => {
   const strikeMinted = etherUnsigned(1e18).mul(1000);
   const withdrawAmount = etherUnsigned(1e18).mul(100);
   const halfAmount = etherUnsigned(1e18).mul(500);
+  const rewardAmount = etherUnsigned(1e18).mul(864 * 14);
 
   beforeAll(async () => {
     [root, blacklistedUser, alice, ...accounts] = saddle.accounts;
@@ -262,9 +263,16 @@ describe('Staking-Blacklist', () => {
     // set alice as distributor
     await send(staking, 'approveRewardDistributor', [staking.strk._address, alice, true]);
 
+    await send(staking.strk, 'transfer', [alice, rewardAmount], {from: root});
+    await send(staking.strk, 'approve', [staking._address, rewardAmount], {from: alice});
+    await send(staking, 'notifyRewardAmount', [staking.strk._address, rewardAmount], {from: alice});
+
+    await increaseTime(86400 * 7 * 2);
+
     await expect(send(staking, 'removeBlacklistedLocks', [blacklistedUser, staking.strk._address], {from: root})).rejects.toRevert('revert MultiFeeDistribution::removeBlacklistedLocks: Only reward distributors allowed');
     await send(staking, 'removeBlacklistedLocks', [blacklistedUser, staking.strk._address], {from: alice});
 
-    expect(await strikeBalance(staking, alice)).toEqualNumber(strikeMinted);
+    // balance should be sum of locked amount and reward amount
+    expect(await strikeBalance(staking, alice)).toEqualNumber(strikeMinted.add(rewardAmount));
   });
 });
