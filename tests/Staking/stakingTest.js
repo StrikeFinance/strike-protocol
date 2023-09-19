@@ -258,7 +258,7 @@ describe('Staking-Blacklist', () => {
     const lockedBalances = await call(staking, 'lockedBalances', [blacklistedUser]);
     expect(lockedBalances.unlockable).toEqualNumber(strikeMinted);
 
-    await expect(send(staking, 'removeBlacklistedLocks', [alice, staking.strk._address], {from: alice})).rejects.toRevert('revert No blacklisted');
+    await expect(send(staking, 'removeBlacklistedLocks', [alice, staking.strk._address, accounts[0]], {from: alice})).rejects.toRevert('revert No blacklisted');
 
     // set alice as distributor
     await send(staking, 'approveRewardDistributor', [staking.strk._address, alice, true]);
@@ -269,10 +269,10 @@ describe('Staking-Blacklist', () => {
 
     await increaseTime(86400 * 7 * 2);
 
-    await expect(send(staking, 'removeBlacklistedLocks', [blacklistedUser, staking.strk._address], {from: root})).rejects.toRevert('revert MultiFeeDistribution::removeBlacklistedLocks: Only reward distributors allowed');
-    await send(staking, 'removeBlacklistedLocks', [blacklistedUser, staking.strk._address], {from: alice});
+    await expect(send(staking, 'removeBlacklistedLocks', [blacklistedUser, staking.strk._address, accounts[0]], {from: root})).rejects.toRevert('revert MultiFeeDistribution::removeBlacklistedLocks: Only reward distributors allowed');
+    await send(staking, 'removeBlacklistedLocks', [blacklistedUser, staking.strk._address, accounts[0]], {from: alice});
 
     // balance should be sum of locked amount and reward amount
-    expect(await strikeBalance(staking, alice)).toEqualNumber(strikeMinted.add(rewardAmount));
+    expect(await strikeBalance(staking, accounts[0])).toEqualNumber(strikeMinted.add(rewardAmount));
   });
 });
