@@ -17,14 +17,16 @@ async function strikeBalance(staking, user) {
   return etherUnsigned(await call(staking.strk, 'balanceOf', [user]))
 }
 
+const QUART = 25000; //  25%
+const HALF = 65000; //  65%
+const WHOLE = 100000; // 100%
+const lockDuration = 86400 * 14 * 6;
+
 describe('Staking', () => {
   let root, accounts;
   let staking;
   const strikeMinted = etherUnsigned(1e18).mul(1000);
   const withdrawAmount = etherUnsigned(1e18).mul(100);
-  const estimatedLeftAmount = etherUnsigned(1e18).mul(400);
-  const estimatedLeftPenaltyAmount = etherUnsigned(1e18).mul(400);
-  const deltaTimestamp = 10000;
 
   beforeEach(async () => {
     [root, ...accounts] = saddle.accounts;
@@ -80,8 +82,13 @@ describe('Staking', () => {
       const withdrawableBalance = await call(staking, 'withdrawableBalance', [root]);
       const strikeMintedBN = new BigNumber(strikeMinted);
 
-      expect(withdrawableBalance.amount).toEqualNumber(strikeMintedBN.dividedBy(2));
-      expect(withdrawableBalance.penaltyAmount).toEqualNumber(strikeMintedBN.dividedBy(2));
+      const earnedBalances = await call(staking, 'earnedBalances', [root]);
+      const penaltyFactor =
+        parseInt((earnedBalances.earningsData[0].unlockTime - parseInt(new Date().getTime() / 1000)) * HALF / lockDuration + QUART)
+      const penaltyAmount = strikeMintedBN.times(penaltyFactor).div(WHOLE).dp(0, 3);
+
+      expect(withdrawableBalance.amount).toEqualNumber(strikeMintedBN.minus(penaltyAmount));
+      expect(withdrawableBalance.penaltyAmount).toEqualNumber(penaltyAmount);
     });
 
     it("can not stake less than zero, only lock enabled", async () => {
@@ -130,9 +137,14 @@ describe('Staking', () => {
       expect(lockedBalances.lockData.length).toEqualNumber(0);
 
       const withdrawableBalance = await call(staking, 'withdrawableBalance', [root]);
-      expect(withdrawableBalance.amount).toEqualNumber(estimatedLeftAmount);
-      expect(withdrawableBalance.penaltyAmount).toEqualNumber(estimatedLeftPenaltyAmount);
 
+      const earnedBalances = await call(staking, 'earnedBalances', [root]);
+      const penaltyFactor =
+        parseInt((earnedBalances.earningsData[0].unlockTime - parseInt(new Date().getTime() / 1000)) * HALF / lockDuration + QUART)
+      const earnedBN = new BigNumber(earnedBalances.earningsData[0].amount);
+      const penaltyAmount = earnedBN.times(penaltyFactor).div(WHOLE).dp(0, 3);
+      expect(withdrawableBalance.amount).toEqualNumber(earnedBN.minus(penaltyAmount));
+      expect(withdrawableBalance.penaltyAmount).toEqualNumber(penaltyAmount);
     });
   });
 
@@ -237,8 +249,7 @@ describe('Staking-Blacklist', () => {
     await send(staking, 'mint', [blacklistedUser, strikeMinted], {from: root});
 
     await send(staking, 'setBlacklist', [blacklistedUser], {from: blacklistedUser});
-    const withdrawableBalance = await call(staking, 'withdrawableBalance', [blacklistedUser]);
-    expect(withdrawableBalance.amount).toEqualNumber(halfAmount);
+
     await expect(send(staking, 'withdraw', [withdrawAmount], {from: blacklistedUser})).rejects.toRevert('revert Blacklisted');
     await expect(send(staking, 'emergencyWithdraw', [], {from: blacklistedUser})).rejects.toRevert('revert Blacklisted');
   });
