@@ -437,6 +437,22 @@ contract StrikeStaking is StrikeStakingG1Storage {
         emit Withdrawn(msg.sender, amount);
     }
 
+    // Withdraw full unlocked balance and earnings
+    function exit() external nonReentrant updateReward(msg.sender) nonBlacklist(msg.sender) {
+        (uint256 amount, uint256 penaltyAmount) = withdrawableBalance(msg.sender);
+        delete userEarnings[msg.sender];
+        Balances storage bal = balances[msg.sender];
+        bal.total = bal.total.sub(bal.unlocked).sub(bal.earned);
+        bal.unlocked = 0;
+        bal.earned = 0;
+
+        totalSupply = totalSupply.sub(amount.add(penaltyAmount));
+        stakingToken.safeTransfer(msg.sender, amount);
+        if (penaltyAmount > 0) {
+            _notifyReward(address(stakingToken), penaltyAmount);
+        }
+    }
+
     // Claim all pending staking rewards
     function getReward() public nonReentrant updateReward(msg.sender) nonBlacklist(msg.sender) {
         for (uint256 i; i < rewardTokens.length; i++) {
