@@ -82,6 +82,10 @@ contract StrikeStaking is StrikeStakingG1Storage {
 
     bool private _notEntered;
 
+    uint256 public constant QUART = 25000; //  25%
+	uint256 public constant HALF = 65000; //  65%
+	uint256 public constant WHOLE = 100000; // 100%
+
     /**
       * @notice Emitted when pendingAdmin is changed
       */
@@ -295,24 +299,30 @@ contract StrikeStaking is StrikeStakingG1Storage {
 
     // Final balance received and penalty balance paid by user upon calling exit
     function withdrawableBalance(address user) public view returns (uint256 amount, uint256 penaltyAmount) {
-        Balances storage bal = balances[user];
-        uint256 amountWithoutPenalty;
-        if (bal.earned > 0) {
-            uint256 length = userEarnings[user].length;
-            for (uint256 i = 0; i < length; i++) {
-                uint256 earnedAmount = userEarnings[user][i].amount;
-                if (earnedAmount == 0) continue;
-                if (userEarnings[user][i].unlockTime > block.timestamp) {
-                    break;
-                }
-                amountWithoutPenalty = amountWithoutPenalty.add(earnedAmount);
-            }
-
-            penaltyAmount = bal.earned.sub(amountWithoutPenalty).div(2);
-        }
-        amount = bal.unlocked.add(amountWithoutPenalty).add(penaltyAmount);
-        return (amount, penaltyAmount);
+        uint256 earned = balances[user].earned;
+		if (earned > 0) {
+			uint256 length = userEarnings[user].length;
+			for (uint256 i = 0; i < length; i++) {
+				uint256 earnedAmount = userEarnings[user][i].amount;
+				if (earnedAmount == 0) continue;
+				(, , uint256 newPenaltyAmount) = _penaltyInfo(userEarnings[user][i]);
+				penaltyAmount = penaltyAmount.add(newPenaltyAmount);
+			}
+		}
+		amount = balances[user].unlocked.add(earned).sub(penaltyAmount);
+		return (amount, penaltyAmount);
     }
+
+    function _penaltyInfo(
+		LockedBalance memory earning
+	) internal view returns (uint256 amount, uint256 penaltyFactor, uint256 penaltyAmount) {
+		if (earning.unlockTime > block.timestamp) {
+			// 90% on day 1, decays to 25% on day 90
+			penaltyFactor = earning.unlockTime.sub(block.timestamp).mul(HALF).div(lockDuration).add(QUART); // 25% + timeLeft/vestDuration * 65%
+		}
+		penaltyAmount = earning.amount.mul(penaltyFactor).div(WHOLE);
+		amount = earning.amount.sub(penaltyAmount);
+	}
 
     /* ========== MUTATIVE FUNCTIONS ========== */
 
@@ -368,43 +378,54 @@ contract StrikeStaking is StrikeStakingG1Storage {
     // incurs a 50% penalty which is distributed based on locked balances.
     function withdraw(uint256 amount) public nonReentrant updateReward(msg.sender) nonBlacklist(msg.sender) {
         require(amount > 0, "MultiFeeDistribution::withdraw: Cannot withdraw 0");
-        Balances storage bal = balances[msg.sender];
-        uint256 penaltyAmount;
 
-        if (amount <= bal.unlocked) {
-            bal.unlocked = bal.unlocked.sub(amount);
-        } else {
-            uint256 remaining = amount.sub(bal.unlocked);
-            require(bal.earned >= remaining, "MultiFeeDistribution::withdraw: Insufficient unlocked balance");
-            bal.unlocked = 0;
-            bal.earned = bal.earned.sub(remaining);
-            for (uint256 i = 0; ; i++) {
-                uint256 earnedAmount = userEarnings[msg.sender][i].amount;
-                if (earnedAmount == 0) continue;
-                if (penaltyAmount == 0 && userEarnings[msg.sender][i].unlockTime > block.timestamp) {
-                    penaltyAmount = remaining;
-                    require(bal.earned >= remaining, "MultiFeeDistribution::withdraw: Insufficient balance after penalty");
-                    bal.earned = bal.earned.sub(remaining);
-                    if (bal.earned == 0) {
-                        delete userEarnings[msg.sender];
-                        break;
-                    }
-                    if (bal.earned == 1) {
-                        delete userEarnings[msg.sender];
-                        penaltyAmount = penaltyAmount.add(1);
-                        break;
-                    }
-                    remaining = remaining.mul(2);
-                }
-                if (remaining <= earnedAmount) {
-                    userEarnings[msg.sender][i].amount = earnedAmount.sub(remaining);
-                    break;
-                } else {
-                    delete userEarnings[msg.sender][i];
-                    remaining = remaining.sub(earnedAmount);
-                }
-            }
-        }
+        address _address = msg.sender;
+        uint256 penaltyAmount;
+		Balances storage bal = balances[_address];
+
+		if (amount <= bal.unlocked) {
+			bal.unlocked = bal.unlocked.sub(amount);
+		} else {
+			uint256 remaining = amount.sub(bal.unlocked);
+			require(bal.earned >= remaining, "MultiFeeDistribution::invalid earned");
+			bal.unlocked = 0;
+			uint256 sumEarned = bal.earned;
+			uint256 i;
+			for (i = 0; ; i++) {
+				uint256 earnedAmount = userEarnings[_address][i].amount;
+				if (earnedAmount == 0) continue;
+				(, uint256 penaltyFactor, ) = _penaltyInfo(userEarnings[_address][i]);
+
+				// Amount required from this lock, taking into account the penalty
+				uint256 requiredAmount = remaining.mul(WHOLE).div(WHOLE.sub(penaltyFactor));
+				if (requiredAmount >= earnedAmount) {
+					requiredAmount = earnedAmount;
+					remaining = remaining.sub(earnedAmount.mul(WHOLE.sub(penaltyFactor)).div(WHOLE)); // remaining -= earned * (1 - pentaltyFactor)
+					if (remaining == 0) i++;
+				} else {
+					userEarnings[_address][i].amount = earnedAmount.sub(requiredAmount);
+					remaining = 0;
+				}
+				sumEarned = sumEarned.sub(requiredAmount);
+
+				penaltyAmount = penaltyAmount.add(requiredAmount.mul(penaltyFactor).div(WHOLE)); // penalty += amount * penaltyFactor
+
+				if (remaining == 0) {
+					break;
+				} else {
+					require(sumEarned != 0, "MultiFeeDistribution::0 earned");
+				}
+			}
+			if (i > 0) {
+				for (uint256 j = i; j < userEarnings[_address].length; j++) {
+					userEarnings[_address][j - i] = userEarnings[_address][j];
+				}
+				for (uint256 j = 0; j < i; j++) {
+					userEarnings[_address].pop();
+				}
+			}
+			bal.earned = sumEarned;
+		}
 
         uint256 adjustedAmount = amount.add(penaltyAmount);
         bal.total = bal.total.sub(adjustedAmount);
@@ -414,6 +435,22 @@ contract StrikeStaking is StrikeStakingG1Storage {
             _notifyReward(address(stakingToken), penaltyAmount);
         }
         emit Withdrawn(msg.sender, amount);
+    }
+
+    // Withdraw full unlocked balance and earnings
+    function exit() external nonReentrant updateReward(msg.sender) nonBlacklist(msg.sender) {
+        (uint256 amount, uint256 penaltyAmount) = withdrawableBalance(msg.sender);
+        delete userEarnings[msg.sender];
+        Balances storage bal = balances[msg.sender];
+        bal.total = bal.total.sub(bal.unlocked).sub(bal.earned);
+        bal.unlocked = 0;
+        bal.earned = 0;
+
+        totalSupply = totalSupply.sub(amount.add(penaltyAmount));
+        stakingToken.safeTransfer(msg.sender, amount);
+        if (penaltyAmount > 0) {
+            _notifyReward(address(stakingToken), penaltyAmount);
+        }
     }
 
     // Claim all pending staking rewards
