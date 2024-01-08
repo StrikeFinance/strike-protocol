@@ -86,6 +86,8 @@ contract StrikeStaking is StrikeStakingG1Storage {
 	uint256 public constant HALF = 65000; //  65%
 	uint256 public constant WHOLE = 100000; // 100%
 
+    uint256 public constant MAX_REWARD_TOKENS = 10;
+
     /**
       * @notice Emitted when pendingAdmin is changed
       */
@@ -156,7 +158,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
             mintersArray.push(_minters[i]);
         }
         // First reward MUST be the staking token or things will break
-        // related to the 50% penalty and distribution to locked balances
+        // related to the penalty and distribution to locked balances
         rewardTokens.push(_stakingToken);
         rewardData[_stakingToken].lastUpdateTime = block.timestamp;
         rewardData[_stakingToken].periodFinish = block.timestamp;
@@ -167,6 +169,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
     // Add a new reward token to be distributed to stakers
     function addReward(address _rewardsToken, address _distributor) public onlyOwner {
         require(rewardData[_rewardsToken].lastUpdateTime == 0, "MultiFeeDistribution::addReward: Invalid");
+        require(rewardTokens.length < MAX_REWARD_TOKENS, "MultiFeeDistribution::addReward: Exceed max limit");
         rewardTokens.push(_rewardsToken);
         rewardData[_rewardsToken].lastUpdateTime = block.timestamp;
         rewardData[_rewardsToken].periodFinish = block.timestamp;
@@ -252,7 +255,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
     }
 
     // Information on the "earned" balances of a user
-    // Earned balances may be withdrawn immediately for a 50% penalty
+    // Earned balances may be withdrawn immediately for a penalty
     function earnedBalances(address user) external view returns (uint256 total, LockedBalance[] memory earningsData) {
         LockedBalance[] storage earnings = userEarnings[user];
         uint256 idx;
@@ -352,7 +355,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
     }
 
     // Mint new tokens
-    // Minted tokens receive rewards normally but incur a 50% penalty when
+    // Minted tokens receive rewards normally but incur a penalty when
     // withdrawn before lockDuration has passed.
     function mint(address user, uint256 amount) external updateReward(user) nonBlacklist(user) {
         require(minters[msg.sender], "MultiFeeDistribution::mint: Only minters allowed");
@@ -375,7 +378,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
 
     // Withdraw staked tokens
     // First withdraws unlocked tokens, then earned tokens. Withdrawing earned tokens
-    // incurs a 50% penalty which is distributed based on locked balances.
+    // incurs a penalty which is distributed based on locked balances.
     function withdraw(uint256 amount) public nonReentrant updateReward(msg.sender) nonBlacklist(msg.sender) {
         require(amount > 0, "MultiFeeDistribution::withdraw: Cannot withdraw 0");
 
@@ -484,7 +487,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
     }
 
     // Withdraw all currently locked tokens where the unlock time has passed
-    function withdrawExpiredLocks() external nonBlacklist(msg.sender) {
+    function withdrawExpiredLocks() external updateReward(msg.sender) nonBlacklist(msg.sender) {
         LockedBalance[] storage locks = userLocks[msg.sender];
         Balances storage bal = balances[msg.sender];
         uint256 amount;
