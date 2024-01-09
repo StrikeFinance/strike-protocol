@@ -322,7 +322,10 @@ contract StrikeStaking is StrikeStakingG1Storage {
 		if (earning.unlockTime > block.timestamp) {
 			// 90% on day 1, decays to 25% on day 90
 			penaltyFactor = earning.unlockTime.sub(block.timestamp).mul(HALF).div(lockDuration).add(QUART); // 25% + timeLeft/vestDuration * 65%
-		}
+            if (penaltyFactor > HALF + QUART) {
+                penaltyFactor = HALF + QUART;
+            }
+        }
 		penaltyAmount = earning.amount.mul(penaltyFactor).div(WHOLE);
 		amount = earning.amount.sub(penaltyAmount);
 	}
