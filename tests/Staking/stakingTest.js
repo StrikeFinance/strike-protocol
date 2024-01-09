@@ -146,6 +146,43 @@ describe('Staking', () => {
       expect(withdrawableBalance.amount).toEqualNumber(earnedBN.minus(penaltyAmount));
       expect(withdrawableBalance.penaltyAmount).toEqualNumber(penaltyAmount);
     });
+
+    it("user claim reward after withdrawal expired locks", async () => {
+      const lockAmount = etherUnsigned(1e18).mul(1000);
+      const notifyAmount = etherUnsigned(1e18).mul(86400 * 14);
+
+      await send(staking.strk, 'approve', [staking._address, notifyAmount.mul(2)], {from: root});
+      await send(staking, 'stake', [lockAmount, true], {from: root});
+
+      // Approve as distributor
+      await send(staking, 'approveRewardDistributor', [staking.strk._address, root, true]);
+
+      await send(staking, 'notifyRewardAmount', [staking.strk._address, notifyAmount]);
+
+      await increaseTime(86400 * 14 * 6);
+
+      const lockedBalances = await call(staking, 'lockedBalances', [root]);
+      expect(lockedBalances.unlockable).toEqualNumber(lockAmount);
+
+      const claimableRewards = await call(staking, 'claimableRewards', [root]);
+      expect(claimableRewards[0].amount).toEqualNumber(notifyAmount);
+
+      await send(staking, 'withdrawExpiredLocks', []);
+
+      const lockedBalances1 = await call(staking, 'lockedBalances', [root]);
+      expect(lockedBalances1.unlockable).toEqualNumber(0);
+
+      const claimableRewards1 = await call(staking, 'claimableRewards', [root]);
+      expect(claimableRewards1[0].amount).toEqualNumber(notifyAmount);
+
+      const balanceBefore = await strikeBalance(staking, root)
+      await send(staking, 'getReward', []);
+      const balanceAfter = await strikeBalance(staking, root)
+      expect(balanceAfter).toEqualNumber(balanceBefore.add(notifyAmount));
+
+      const claimableRewards2 = await call(staking, 'claimableRewards', [root]);
+      expect(claimableRewards2[0].amount).toEqualNumber(0);
+    });
   });
 
   describe('_acceptAdminInImplementation()', () => {
