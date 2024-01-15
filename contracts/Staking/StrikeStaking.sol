@@ -88,6 +88,9 @@ contract StrikeStaking is StrikeStakingG1Storage {
 
     uint256 public constant MAX_REWARD_TOKENS = 10;
 
+    // exlcude from penalty
+    mapping(address => bool) private _isExcludedFromPenalty;
+
     /**
       * @notice Emitted when pendingAdmin is changed
       */
@@ -308,7 +311,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
 			for (uint256 i = 0; i < length; i++) {
 				uint256 earnedAmount = userEarnings[user][i].amount;
 				if (earnedAmount == 0) continue;
-				(, , uint256 newPenaltyAmount) = _penaltyInfo(userEarnings[user][i]);
+				(, , uint256 newPenaltyAmount) = _penaltyInfo(user, userEarnings[user][i]);
 				penaltyAmount = penaltyAmount.add(newPenaltyAmount);
 			}
 		}
@@ -317,9 +320,9 @@ contract StrikeStaking is StrikeStakingG1Storage {
     }
 
     function _penaltyInfo(
-		LockedBalance memory earning
+		address user, LockedBalance memory earning
 	) internal view returns (uint256 amount, uint256 penaltyFactor, uint256 penaltyAmount) {
-		if (earning.unlockTime > block.timestamp) {
+		if (!_isExcludedFromPenalty[user] && earning.unlockTime > block.timestamp) {
 			// 90% on day 1, decays to 25% on day 90
 			penaltyFactor = earning.unlockTime.sub(block.timestamp).mul(HALF).div(lockDuration).add(QUART); // 25% + timeLeft/vestDuration * 65%
             if (penaltyFactor > HALF + QUART) {
@@ -329,6 +332,10 @@ contract StrikeStaking is StrikeStakingG1Storage {
 		penaltyAmount = earning.amount.mul(penaltyFactor).div(WHOLE);
 		amount = earning.amount.sub(penaltyAmount);
 	}
+
+    function isExcludedFromPenalty(address account) external view returns(bool) {
+        return _isExcludedFromPenalty[account];
+    }
 
     /* ========== MUTATIVE FUNCTIONS ========== */
 
@@ -400,7 +407,7 @@ contract StrikeStaking is StrikeStakingG1Storage {
 			for (i = 0; ; i++) {
 				uint256 earnedAmount = userEarnings[_address][i].amount;
 				if (earnedAmount == 0) continue;
-				(, uint256 penaltyFactor, ) = _penaltyInfo(userEarnings[_address][i]);
+				(, uint256 penaltyFactor, ) = _penaltyInfo(_address, userEarnings[_address][i]);
 
 				// Amount required from this lock, taking into account the penalty
 				uint256 requiredAmount = remaining.mul(WHOLE).div(WHOLE.sub(penaltyFactor));
@@ -569,6 +576,11 @@ contract StrikeStaking is StrikeStakingG1Storage {
         IERC20(_rewardsToken).safeTransferFrom(msg.sender, address(this), reward);
         _notifyReward(_rewardsToken, reward);
         emit RewardAdded(reward);
+    }
+
+    function excludeFromPenalty(address _rewardsToken, address user, bool excluded) external {
+        require(rewardDistributors[_rewardsToken][msg.sender], "MultiFeeDistribution::excludeFromPenalty: Only reward distributors allowed");
+        _isExcludedFromPenalty[user] = excluded;
     }
 
     // Added to support recovering LP Rewards from other systems such as BAL to be distributed to holders
