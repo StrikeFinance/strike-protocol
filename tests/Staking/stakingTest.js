@@ -147,6 +147,60 @@ describe('Staking', () => {
       expect(withdrawableBalance.penaltyAmount).toEqualNumber(penaltyAmount);
     });
 
+    it("admin exclude user from penalty", async () => {
+      const user1 = accounts[0];
+      const user2 = accounts[1];
+
+      await send(staking, 'mint', [user1, strikeMinted], {from: root});
+      await send(staking, 'mint', [user2, strikeMinted], {from: root});
+      expect(await call(staking, 'totalSupply')).toEqualNumber(strikeMinted.mul(2));
+      expect(await call(staking, 'totalBalance', [user1])).toEqualNumber(strikeMinted);
+
+      const withdrawableBalance1 = await call(staking, 'withdrawableBalance', [user1]);
+      const strikeMintedBN = new BigNumber(strikeMinted);
+
+      const earnedBalances1 = await call(staking, 'earnedBalances', [user1]);
+      const penaltyFactor1 =
+        parseInt((earnedBalances1.earningsData[0].unlockTime - parseInt(new Date().getTime() / 1000)) * HALF / lockDuration + QUART)
+      const penaltyAmount1 = strikeMintedBN.times(penaltyFactor1).div(WHOLE).dp(0, 3);
+
+      expect(withdrawableBalance1.amount).toEqualNumber(strikeMintedBN.minus(penaltyAmount1));
+      expect(withdrawableBalance1.penaltyAmount).toEqualNumber(penaltyAmount1);
+
+      // Admin exclude user1 from penalty
+      await send(staking, 'approveRewardDistributor', [staking.strk._address, root, true]);
+      await send(staking, 'excludeFromPenalty', [staking.strk._address, user1, true]);
+
+      const withdrawableBalance1_1 = await call(staking, 'withdrawableBalance', [user1]);
+
+      expect(withdrawableBalance1_1.amount).toEqualNumber(strikeMintedBN);
+      expect(withdrawableBalance1_1.penaltyAmount).toEqualNumber(0);
+
+      // withdraw
+      await send(staking, 'withdraw', [strikeMinted], {from: user1});
+      const balanceOfUser1 = new BigNumber(await strikeBalance(staking, user1))
+      expect(balanceOfUser1).toEqualNumber(strikeMintedBN);
+
+      // check normal user
+      const withdrawableBalance2 = await call(staking, 'withdrawableBalance', [user2]);
+
+      const earnedBalances2 = await call(staking, 'earnedBalances', [user2]);
+      const penaltyFactor2 =
+        parseInt((earnedBalances2.earningsData[0].unlockTime - parseInt(new Date().getTime() / 1000)) * HALF / lockDuration + QUART)
+      const penaltyAmount2 = strikeMintedBN.times(penaltyFactor2).div(WHOLE).dp(0, 3);
+
+      expect(withdrawableBalance2.amount).toEqualNumber(strikeMintedBN.minus(penaltyAmount2));
+      expect(withdrawableBalance2.penaltyAmount).toEqualNumber(penaltyAmount2);
+
+      await send(staking.strk, 'transfer', [staking._address, strikeMinted], {from: root});
+
+      await expect(send(staking, 'withdraw', [new BigNumber(withdrawableBalance2.amount).plus(1)], {from: user2})).rejects.toRevert('revert MultiFeeDistribution::0 earned');
+
+      await send(staking, 'withdraw', [withdrawableBalance2.amount], {from: user2});
+      const balanceOfUser2 = new BigNumber(await strikeBalance(staking, user2))
+      expect(balanceOfUser2.toNumber()).toBeLessThan(strikeMintedBN.toNumber());
+    });
+
     it("user claim reward after withdrawal expired locks", async () => {
       const lockAmount = etherUnsigned(1e18).mul(1000);
       const notifyAmount = etherUnsigned(1e18).mul(86400 * 14);
