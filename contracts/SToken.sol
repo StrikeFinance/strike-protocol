@@ -477,6 +477,13 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
         return mintFresh(msg.sender, mintAmount);
     }
 
+    /**
+     * @notice Token amount to lock at address 0 on first mint
+     */
+    function lockTokens() public pure returns (uint) {
+        return 1000;
+    }
+
     struct MintLocalVars {
         Error err;
         MathError mathErr;
@@ -547,6 +554,16 @@ contract SToken is STokenInterface, Exponential, TokenErrorReporter {
         require(vars.mathErr == MathError.NO_ERROR, "MINT_NEW_ACCOUNT_BALANCE_CALCULATION_FAILED");
 
         /* We write previously calculated values into storage */
+        if (totalSupply == 0 && lockTokens() > 0) {
+            (vars.mathErr, vars.accountTokensNew) = subUInt(vars.accountTokensNew, lockTokens());
+            require(vars.mathErr == MathError.NO_ERROR, "MINT_LOCK_TOKENS_SUBTRACT_FAILED");
+
+            (vars.mathErr, vars.mintTokens) = subUInt(vars.mintTokens, lockTokens());
+            require(vars.mathErr == MathError.NO_ERROR, "MINT_LOCK_TOKENS_SUBTRACT_FAILED");
+
+            accountTokens[address(0)] = lockTokens();
+            emit Transfer(address(this), address(0), lockTokens());
+        }
         totalSupply = vars.totalSupplyNew;
         accountTokens[minter] = vars.accountTokensNew;
 

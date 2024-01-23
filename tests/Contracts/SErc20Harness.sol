@@ -153,6 +153,10 @@ contract SErc20Harness is SErc20Immutable {
     function harnessCallBorrowAllowed(uint amount) public returns (uint) {
         return comptroller.borrowAllowed(address(this), msg.sender, amount);
     }
+
+    function lockTokens() public pure returns (uint) {
+        return 0;
+    }
 }
 
 contract SErc20Scenario is SErc20Immutable {
@@ -380,6 +384,10 @@ contract SErc20DelegateHarness is SErc20Delegate {
     function harnessCallBorrowAllowed(uint amount) public returns (uint) {
         return comptroller.borrowAllowed(address(this), msg.sender, amount);
     }
+
+    function lockTokens() public pure returns (uint) {
+        return 0;
+    }
 }
 
 contract SErc20DelegateScenario is SErc20Delegate {
@@ -396,6 +404,10 @@ contract SErc20DelegateScenario is SErc20Delegate {
     function getBlockNumber() internal view returns (uint) {
         ComptrollerScenario comptrollerScenario = ComptrollerScenario(address(comptroller));
         return comptrollerScenario.blockNumber();
+    }
+
+    function lockTokens() public pure returns (uint) {
+        return 0;
     }
 }
 
