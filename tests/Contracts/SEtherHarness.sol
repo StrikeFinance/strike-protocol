@@ -158,6 +158,10 @@ contract SEtherHarness is SEther {
     function harnessRequireNoError(uint error, string calldata message) external pure {
         requireNoError(error, message);
     }
+
+    function lockTokens() public pure returns (uint) {
+        return 0;
+    }
 }
 
 contract SEtherScenario is SEther {
@@ -194,5 +198,9 @@ contract SEtherScenario is SEther {
     function getBlockNumber() internal view returns (uint) {
         ComptrollerScenario comptrollerScenario = ComptrollerScenario(address(comptroller));
         return comptrollerScenario.blockNumber();
+    }
+
+    function lockTokens() public pure returns (uint) {
+        return 0;
     }
 }
